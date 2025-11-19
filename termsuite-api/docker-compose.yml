@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  termsuite-api:
+    build: .
+    container_name: termsuite-api
+    ports:
+      - "7000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./termsuite:/app/termsuite
+    environment:
+      - TERMSUITE_JAR=/app/termsuite/termsuite-core-3.0.10.jar
+      - DATA_DIR=/app/data
+      - JAVA_OPTS=-Xms1g -Xmx4g
+    restart: unless-stopped
