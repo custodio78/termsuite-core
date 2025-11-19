@@ -78,12 +78,15 @@ async def upload_tmx(
     # Parsear TMX para validar y extraer términos del idioma especificado
     try:
         terms = tmx_parser.parse(file_path, language=language)
+        terms_freq = tmx_parser.parse_with_frequency(file_path, language=language)
         
-        # Guardar términos parseados con información del idioma
+        # Guardar términos parseados con información del idioma y frecuencias
         terms_data = {
             "language": language,
             "terms": terms,
-            "total": len(terms)
+            "frequencies": terms_freq,
+            "total": len(terms),
+            "total_occurrences": sum(terms_freq.values())
         }
         terms_path = file_handler.get_path("tmx", f"{file_id}_terms.json")
         with open(terms_path, 'w', encoding='utf-8') as f:
@@ -203,6 +206,110 @@ async def export_excel(job_id: str):
     return FileResponse(
         path=excel_path,
         filename=f"terms_{job_id}.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+
+@app.get("/api/export/tmx-excel/{tmx_id}")
+async def export_tmx_to_excel(tmx_id: str):
+    """
+    Exportar términos de TMX directamente a Excel
+    
+    Args:
+        tmx_id: ID del TMX subido previamente
+    """
+    # Verificar que existe el TMX
+    tmx_terms_path = file_handler.get_path("tmx", f"{tmx_id}_terms.json")
+    if not tmx_terms_path.exists():
+        raise HTTPException(status_code=404, detail="TMX no encontrado")
+    
+    # Cargar términos del TMX
+    with open(tmx_terms_path, 'r', encoding='utf-8') as f:
+        tmx_data = json.load(f)
+    
+    # Extraer términos (compatible con formato nuevo y antiguo)
+    if isinstance(tmx_data, dict):
+        terms_list = tmx_data.get('terms', [])
+        frequencies = tmx_data.get('frequencies', {})
+        language = tmx_data.get('language', 'unknown')
+        total_occurrences = tmx_data.get('total_occurrences', 0)
+    else:
+        terms_list = tmx_data
+        frequencies = {}
+        language = 'unknown'
+        total_occurrences = 0
+    
+    # Crear estructura para Excel ordenada por frecuencia
+    terms_for_excel = []
+    for term in terms_list:
+        freq = frequencies.get(term, 1)
+        terms_for_excel.append({
+            'Término': term,
+            'Frecuencia': freq,
+            'Longitud': len(term),
+            'Palabras': len(term.split()),
+            'Idioma': language
+        })
+    
+    # Ordenar por frecuencia descendente
+    terms_for_excel.sort(key=lambda x: x['Frecuencia'], reverse=True)
+    
+    # Agregar número después de ordenar
+    for idx, item in enumerate(terms_for_excel, 1):
+        item['Número'] = idx
+    
+    # Generar Excel
+    excel_filename = f"tmx_{tmx_id}.xlsx"
+    excel_path = file_handler.get_path("outputs", excel_filename)
+    
+    import pandas as pd
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    
+    df = pd.DataFrame(terms_for_excel)
+    
+    # Crear Excel con formato
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Términos TMX"
+    
+    # Estilos
+    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True, size=11)
+    
+    # Escribir encabezados
+    for col_idx, column in enumerate(df.columns, 1):
+        cell = ws.cell(row=1, column=col_idx, value=column)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+    
+    # Escribir datos
+    for row_idx, row in enumerate(df.values, 2):
+        for col_idx, value in enumerate(row, 1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.alignment = Alignment(vertical='center')
+    
+    # Reordenar columnas para mejor visualización
+    df = df[['Número', 'Término', 'Frecuencia', 'Longitud', 'Palabras', 'Idioma']]
+    
+    # Ajustar anchos
+    ws.column_dimensions['A'].width = 10  # Número
+    ws.column_dimensions['B'].width = 50  # Término
+    ws.column_dimensions['C'].width = 12  # Frecuencia
+    ws.column_dimensions['D'].width = 12  # Longitud
+    ws.column_dimensions['E'].width = 12  # Palabras
+    ws.column_dimensions['F'].width = 12  # Idioma
+    
+    # Congelar primera fila
+    ws.freeze_panes = 'A2'
+    
+    # Guardar
+    wb.save(excel_path)
+    
+    return FileResponse(
+        path=excel_path,
+        filename=f"terminos_tmx_{language}.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 

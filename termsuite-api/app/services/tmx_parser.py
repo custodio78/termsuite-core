@@ -1,6 +1,7 @@
 from lxml import etree
 from typing import List, Dict
 from pathlib import Path
+from collections import Counter
 
 
 class TMXParser:
@@ -66,6 +67,129 @@ class TMXParser:
             raise Exception(f"Error al parsear TMX: {str(e)}")
         
         return sorted(list(terms))
+    
+    def parse_with_frequency(self, tmx_path: str, language: str = None) -> Dict[str, int]:
+        """
+        Parsear archivo TMX y contar frecuencia de términos
+        
+        Args:
+            tmx_path: Ruta al archivo TMX
+            language: Código de idioma (en, es, fr, de, etc.). Si es None, extrae todos.
+            
+        Returns:
+            Diccionario con términos y su frecuencia
+        """
+        from collections import Counter
+        terms = []
+        
+        try:
+            tree = etree.parse(tmx_path)
+            root = tree.getroot()
+            
+            # Namespace TMX
+            ns = {'tmx': 'http://www.lisa.org/tmx14'}
+            
+            # Extraer segmentos de texto del idioma especificado
+            for tu in root.findall('.//tmx:tu', ns):
+                for tuv in tu.findall('.//tmx:tuv', ns):
+                    # Obtener el idioma del segmento
+                    lang_attr = tuv.get('{http://www.w3.org/XML/1998/namespace}lang')
+                    if not lang_attr:
+                        lang_attr = tuv.get('lang')
+                    
+                    # Si se especificó idioma, filtrar
+                    if language:
+                        if lang_attr and not self._match_language(lang_attr, language):
+                            continue
+                    
+                    seg = tuv.find('.//tmx:seg', ns)
+                    if seg is not None and seg.text:
+                        term = seg.text.strip()
+                        if term:
+                            terms.add(term)
+            
+            # Si no hay namespace, intentar sin él
+            if not terms:
+                for tuv in root.findall('.//tuv'):
+                    lang_attr = tuv.get('{http://www.w3.org/XML/1998/namespace}lang')
+                    if not lang_attr:
+                        lang_attr = tuv.get('lang')
+                    
+                    if language:
+                        if lang_attr and not self._match_language(lang_attr, language):
+                            continue
+                    
+                    seg = tuv.find('.//seg')
+                    if seg is not None and seg.text:
+                        term = seg.text.strip()
+                        if term:
+                            terms.add(term)
+        
+        except Exception as e:
+            raise Exception(f"Error al parsear TMX: {str(e)}")
+        
+        return sorted(list(terms))
+    
+    def parse_with_frequency(self, tmx_path: str, language: str = None) -> Dict[str, int]:
+        """
+        Parsear archivo TMX y contar frecuencia de términos
+        
+        Args:
+            tmx_path: Ruta al archivo TMX
+            language: Código de idioma (en, es, fr, de, etc.). Si es None, extrae todos.
+            
+        Returns:
+            Diccionario con términos y su frecuencia
+        """
+        from collections import Counter
+        terms = []
+        
+        try:
+            tree = etree.parse(tmx_path)
+            root = tree.getroot()
+            
+            # Namespace TMX
+            ns = {'tmx': 'http://www.lisa.org/tmx14'}
+            
+            # Extraer todos los segmentos (con repeticiones)
+            for tu in root.findall('.//tmx:tu', ns):
+                for tuv in tu.findall('.//tmx:tuv', ns):
+                    lang_attr = tuv.get('{http://www.w3.org/XML/1998/namespace}lang')
+                    if not lang_attr:
+                        lang_attr = tuv.get('lang')
+                    
+                    if language:
+                        if lang_attr and not self._match_language(lang_attr, language):
+                            continue
+                    
+                    seg = tuv.find('.//tmx:seg', ns)
+                    if seg is not None and seg.text:
+                        term = seg.text.strip()
+                        if term:
+                            terms.append(term)
+            
+            # Si no hay namespace, intentar sin él
+            if not terms:
+                for tuv in root.findall('.//tuv'):
+                    lang_attr = tuv.get('{http://www.w3.org/XML/1998/namespace}lang')
+                    if not lang_attr:
+                        lang_attr = tuv.get('lang')
+                    
+                    if language:
+                        if lang_attr and not self._match_language(lang_attr, language):
+                            continue
+                    
+                    seg = tuv.find('.//seg')
+                    if seg is not None and seg.text:
+                        term = seg.text.strip()
+                        if term:
+                            terms.append(term)
+        
+        except Exception as e:
+            raise Exception(f"Error al parsear TMX: {str(e)}")
+        
+        # Contar frecuencias
+        return dict(Counter(terms))
     
     def _match_language(self, lang_attr: str, target_lang: str) -> bool:
         """

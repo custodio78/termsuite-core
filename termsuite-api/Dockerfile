@@ -2,7 +2,7 @@ FROM python:3.9-slim
 
 # Instalar Java (necesario para TermSuite)
 RUN apt-get update && apt-get install -y \
-    openjdk-11-jre-headless \
+    openjdk-21-jre-headless \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
