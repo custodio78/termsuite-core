@@ -21,7 +21,13 @@
    - Ejemplos de uso
    - Troubleshooting
 
-4. **[ARCHITECTURE.md](ARCHITECTURE.md)** - Arquitectura técnica
+4. **[TMX_USAGE.md](TMX_USAGE.md)** - Guía de uso de memorias TMX
+   - Extracción por idioma
+   - Códigos de idioma soportados
+   - Casos de uso
+   - Integración con herramientas CAT
+
+5. **[ARCHITECTURE.md](ARCHITECTURE.md)** - Arquitectura técnica
    - Estructura del proyecto
    - Flujo de trabajo
    - Componentes

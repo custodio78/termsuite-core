@@ -14,12 +14,21 @@ class TermSuiteClient:
     def __init__(self, base_url: str = "http://localhost:7000"):
         self.base_url = base_url
     
-    def upload_tmx(self, tmx_path: str) -> str:
-        """Subir memoria TMX"""
+    def upload_tmx(self, tmx_path: str, language: str = None) -> str:
+        """
+        Subir memoria TMX
+        
+        Args:
+            tmx_path: Ruta al archivo TMX
+            language: Código de idioma para extraer (en, es, fr, etc.)
+                     Si es None, extrae todos los términos
+        """
         with open(tmx_path, 'rb') as f:
+            params = {'language': language} if language else {}
             response = requests.post(
                 f"{self.base_url}/api/upload-tmx",
-                files={'file': f}
+                files={'file': f},
+                params=params
             )
         response.raise_for_status()
         return response.json()['file_id']
@@ -102,7 +111,8 @@ def main():
     tmx_id = None
     if Path("ejemplo.tmx").exists():
         print("📤 Subiendo TMX...")
-        tmx_id = client.upload_tmx("ejemplo.tmx")
+        # Especificar idioma para extraer términos (en, es, fr, de, etc.)
+        tmx_id = client.upload_tmx("ejemplo.tmx", language='en')
         print(f"✅ TMX subido: {tmx_id}\n")
     
     # 2. Subir corpus

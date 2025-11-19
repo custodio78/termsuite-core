@@ -19,9 +19,9 @@ def test_health():
     return True
 
 
-def test_upload_tmx(tmx_file: str):
+def test_upload_tmx(tmx_file: str, language: str = 'en'):
     """Probar subida de TMX"""
-    print(f"\n📤 Subiendo TMX: {tmx_file}")
+    print(f"\n📤 Subiendo TMX: {tmx_file} (idioma: {language})")
     
     if not Path(tmx_file).exists():
         print(f"❌ Archivo no encontrado: {tmx_file}")
@@ -30,13 +30,14 @@ def test_upload_tmx(tmx_file: str):
     with open(tmx_file, 'rb') as f:
         response = requests.post(
             f"{BASE_URL}/api/upload-tmx",
-            files={'file': f}
+            files={'file': f},
+            params={'language': language}
         )
     
     if response.status_code == 200:
         data = response.json()
         print(f"✅ TMX subido: {data['file_id']}")
-        print(f"   Términos encontrados: {data['message']}")
+        print(f"   {data['message']}")
         return data['file_id']
     else:
         print(f"❌ Error: {response.text}")

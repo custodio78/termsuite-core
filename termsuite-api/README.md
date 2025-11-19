@@ -36,9 +36,18 @@ API REST para extracción terminológica usando TermSuite con soporte para memor
 POST /api/upload-tmx
 Content-Type: multipart/form-data
 
-curl -X POST "http://localhost:8000/api/upload-tmx" \
+# Extraer términos de un idioma específico
+curl -X POST "http://localhost:7000/api/upload-tmx?language=en" \
+  -F "file=@memoria.tmx"
+
+# O extraer todos los términos (sin filtro de idioma)
+curl -X POST "http://localhost:7000/api/upload-tmx" \
   -F "file=@memoria.tmx"
 ```
+
+**Parámetros:**
+- `file`: Archivo TMX (requerido)
+- `language`: Código de idioma (opcional: en, es, fr, de, it, pt, etc.)
 
 **Respuesta:**
 ```json
@@ -46,7 +55,7 @@ curl -X POST "http://localhost:8000/api/upload-tmx" \
   "file_id": "uuid-del-archivo",
   "filename": "memoria.tmx",
   "size": 12345,
-  "message": "TMX subido exitosamente. 150 términos encontrados."
+  "message": "TMX subido exitosamente. 150 términos del idioma 'en' encontrados."
 }
 ```
 

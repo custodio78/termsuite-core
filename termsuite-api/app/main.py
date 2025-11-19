@@ -57,29 +57,46 @@ async def root():
 
 
 @app.post("/api/upload-tmx", response_model=UploadResponse)
-async def upload_tmx(file: UploadFile = File(...)):
-    """Subir memoria de traducción TMX"""
+async def upload_tmx(
+    file: UploadFile = File(...),
+    language: str = None
+):
+    """
+    Subir memoria de traducción TMX
+    
+    Args:
+        file: Archivo TMX
+        language: Código de idioma para extraer términos (en, es, fr, de, etc.)
+                 Si no se especifica, extrae todos los términos.
+    """
     if not file.filename.endswith('.tmx'):
         raise HTTPException(status_code=400, detail="Solo se permiten archivos .tmx")
     
     file_id = str(uuid.uuid4())
     file_path = file_handler.save_upload(file_id, file, "tmx")
     
-    # Parsear TMX para validar
+    # Parsear TMX para validar y extraer términos del idioma especificado
     try:
-        terms = tmx_parser.parse(file_path)
-        # Guardar términos parseados
+        terms = tmx_parser.parse(file_path, language=language)
+        
+        # Guardar términos parseados con información del idioma
+        terms_data = {
+            "language": language,
+            "terms": terms,
+            "total": len(terms)
+        }
         terms_path = file_handler.get_path("tmx", f"{file_id}_terms.json")
         with open(terms_path, 'w', encoding='utf-8') as f:
-            json.dump(terms, f, ensure_ascii=False, indent=2)
+            json.dump(terms_data, f, ensure_ascii=False, indent=2)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error al parsear TMX: {str(e)}")
     
+    lang_msg = f" del idioma '{language}'" if language else ""
     return UploadResponse(
         file_id=file_id,
         filename=file.filename,
         size=os.path.getsize(file_path),
-        message=f"TMX subido exitosamente. {len(terms)} términos encontrados."
+        message=f"TMX subido exitosamente. {len(terms)} términos{lang_msg} encontrados."
     )
 
 
@@ -222,7 +239,9 @@ async def process_extraction(job_id: str, request: ExtractionRequest):
         if request.use_tmx and request.tmx_id:
             tmx_terms_path = file_handler.get_path("tmx", f"{request.tmx_id}_terms.json")
             with open(tmx_terms_path, 'r', encoding='utf-8') as f:
-                tmx_terms = json.load(f)
+                tmx_data = json.load(f)
+            # Extraer lista de términos (compatible con formato antiguo y nuevo)
+            tmx_terms = tmx_data.get('terms', tmx_data) if isinstance(tmx_data, dict) else tmx_data
             results = filter_with_tmx(results, tmx_terms)
         
         jobs[job_id]["progress"] = 90

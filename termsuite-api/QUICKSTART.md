@@ -109,9 +109,18 @@ python test_api.py mi_corpus.txt
 
 ## Paso 5: Con Memoria TMX
 
-**1. Subir TMX:**
+**1. Subir TMX (especificando idioma):**
 ```bash
-curl -X POST "http://localhost:8000/api/upload-tmx" \
+# Extraer términos en inglés
+curl -X POST "http://localhost:7000/api/upload-tmx?language=en" \
+  -F "file=@memoria.tmx"
+
+# Extraer términos en español
+curl -X POST "http://localhost:7000/api/upload-tmx?language=es" \
+  -F "file=@memoria.tmx"
+
+# Extraer todos los términos (sin filtro)
+curl -X POST "http://localhost:7000/api/upload-tmx" \
   -F "file=@memoria.tmx"
 ```
 
