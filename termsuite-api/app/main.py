@@ -5,7 +5,7 @@ import os
 import uuid
 import json
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 from app.models import (
     ExtractionRequest, ExtractionResponse, JobStatusResponse,
@@ -211,12 +211,36 @@ async def export_excel(job_id: str):
 
 
 @app.get("/api/export/tmx-excel/{tmx_id}")
-async def export_tmx_to_excel(tmx_id: str):
+async def export_tmx_to_excel(
+    tmx_id: str,
+    min_frequency: Optional[int] = None,
+    top_n: Optional[int] = None,
+    min_words: Optional[int] = None,
+    max_words: Optional[int] = None,
+    sort_by: str = "frequency",
+    sort_order: str = "desc",
+    format: str = "excel",
+    columns: Optional[str] = None,
+    exclude_numbers: bool = False,
+    contains: Optional[str] = None,
+    include_translation: bool = False
+):
     """
-    Exportar términos de TMX directamente a Excel
+    Exportar términos de TMX directamente a Excel con opciones de filtrado
     
     Args:
         tmx_id: ID del TMX subido previamente
+        min_frequency: Frecuencia mínima (ej: 5)
+        top_n: Top N términos más frecuentes (ej: 100)
+        min_words: Mínimo número de palabras (ej: 2)
+        max_words: Máximo número de palabras (ej: 5)
+        sort_by: Ordenar por: frequency, alphabetical, length, words
+        sort_order: Orden: asc o desc
+        format: Formato de salida: excel, csv, json
+        columns: Columnas a incluir (separadas por coma)
+        exclude_numbers: Excluir términos con números
+        contains: Filtrar términos que contengan este texto
+        include_translation: Incluir traducción si está disponible
     """
     # Verificar que existe el TMX
     tmx_terms_path = file_handler.get_path("tmx", f"{tmx_id}_terms.json")
@@ -239,34 +263,187 @@ async def export_tmx_to_excel(tmx_id: str):
         language = 'unknown'
         total_occurrences = 0
     
-    # Crear estructura para Excel ordenada por frecuencia
+    # Crear estructura para Excel
     terms_for_excel = []
     for term in terms_list:
         freq = frequencies.get(term, 1)
+        word_count = len(term.split())
+        
+        # Aplicar filtros
+        # Filtro de frecuencia mínima
+        if min_frequency and freq < min_frequency:
+            continue
+        
+        # Filtro de palabras
+        if min_words and word_count < min_words:
+            continue
+        if max_words and word_count > max_words:
+            continue
+        
+        # Filtro de números
+        if exclude_numbers and any(char.isdigit() for char in term):
+            continue
+        
+        # Filtro de contenido
+        if contains and contains.lower() not in term.lower():
+            continue
+        
         terms_for_excel.append({
             'Término': term,
             'Frecuencia': freq,
             'Longitud': len(term),
-            'Palabras': len(term.split()),
+            'Palabras': word_count,
             'Idioma': language
         })
     
-    # Ordenar por frecuencia descendente
-    terms_for_excel.sort(key=lambda x: x['Frecuencia'], reverse=True)
+    # Ordenar según parámetros
+    if sort_by == "frequency":
+        terms_for_excel.sort(key=lambda x: x['Frecuencia'], reverse=(sort_order == "desc"))
+    elif sort_by == "alphabetical":
+        terms_for_excel.sort(key=lambda x: x['Término'].lower(), reverse=(sort_order == "desc"))
+    elif sort_by == "length":
+        terms_for_excel.sort(key=lambda x: x['Longitud'], reverse=(sort_order == "desc"))
+    elif sort_by == "words":
+        terms_for_excel.sort(key=lambda x: x['Palabras'], reverse=(sort_order == "desc"))
     
-    # Agregar número después de ordenar
+    # Aplicar top_n después de ordenar
+    if top_n:
+        terms_for_excel = terms_for_excel[:top_n]
+    
+    # Agregar número después de filtrar y ordenar
     for idx, item in enumerate(terms_for_excel, 1):
         item['Número'] = idx
     
-    # Generar Excel
+    # Si no hay términos después de filtrar
+    if not terms_for_excel:
+        raise HTTPException(
+            status_code=404, 
+            detail="No se encontraron términos con los filtros aplicados"
+        )
+    
+    # Incluir traducción si se solicita
+    if include_translation:
+        # Buscar el archivo TMX original en uploads/tmx/
+        tmx_dir = file_handler.uploads_dir / 'tmx'
+        tmx_file_path = None
+        
+        # Buscar archivo con el ID
+        if tmx_dir.exists():
+            for file in tmx_dir.glob(f"{tmx_id}*"):
+                if file.suffix == '.tmx':
+                    tmx_file_path = file
+                    break
+        
+        if tmx_file_path and tmx_file_path.exists():
+            try:
+                # Pasar el idioma para identificar correctamente source y target
+                translations = tmx_parser.parse_with_translations(str(tmx_file_path), source_lang=language)
+                
+                # Crear diccionario de traducciones exactas
+                trans_dict_exact = {}
+                # Crear lista de segmentos para búsqueda parcial
+                trans_segments = []
+                
+                for trans in translations:
+                    source = trans.get('source', '').strip()
+                    target = trans.get('target', '').strip()
+                    if source and target:
+                        # Guardar traducción exacta
+                        trans_dict_exact[source.lower()] = target
+                        # Guardar para búsqueda parcial
+                        trans_segments.append({
+                            'source': source,
+                            'target': target,
+                            'source_lower': source.lower()
+                        })
+                
+                # Agregar traducción a cada término
+                for item in terms_for_excel:
+                    term = item['Término']
+                    term_lower = term.lower()
+                    
+                    # 1. Buscar coincidencia exacta
+                    if term_lower in trans_dict_exact:
+                        item['Traducción'] = trans_dict_exact[term_lower]
+                        item['Tipo Match'] = 'Exacto'
+                    else:
+                        # 2. Buscar en segmentos (coincidencia parcial)
+                        found = False
+                        for seg in trans_segments:
+                            if term_lower in seg['source_lower']:
+                                # Encontrado en un segmento
+                                item['Traducción'] = f"[Segmento] {seg['target']}"
+                                item['Tipo Match'] = 'Parcial'
+                                found = True
+                                break
+                        
+                        if not found:
+                            item['Traducción'] = ''
+                            item['Tipo Match'] = 'No encontrado'
+                
+            except Exception as e:
+                # Si hay error al parsear traducciones, agregar columna vacía
+                for item in terms_for_excel:
+                    item['Traducción'] = f'Error: {str(e)}'
+                    item['Tipo Match'] = 'Error'
+        else:
+            # Si no se encuentra el archivo TMX, agregar columna vacía
+            for item in terms_for_excel:
+                item['Traducción'] = 'TMX no encontrado'
+    
+    # Seleccionar columnas si se especifica
+    if columns:
+        selected_cols = [col.strip().capitalize() for col in columns.split(',')]
+        # Mapeo de nombres de columnas
+        col_mapping = {
+            'Term': 'Término',
+            'Frequency': 'Frecuencia',
+            'Length': 'Longitud',
+            'Words': 'Palabras',
+            'Language': 'Idioma',
+            'Translation': 'Traducción',
+            'Number': 'Número'
+        }
+        # Convertir nombres en inglés a español
+        selected_cols = [col_mapping.get(col, col) for col in selected_cols]
+        # Filtrar solo columnas existentes
+        available_cols = list(terms_for_excel[0].keys()) if terms_for_excel else []
+        selected_cols = [col for col in selected_cols if col in available_cols]
+        if selected_cols:
+            terms_for_excel = [{k: v for k, v in item.items() if k in selected_cols} 
+                              for item in terms_for_excel]
+    
+    import pandas as pd
+    df = pd.DataFrame(terms_for_excel)
+    
+    # Exportar según formato
+    if format == "json":
+        output_filename = f"tmx_{tmx_id}.json"
+        output_path = file_handler.get_path("outputs", output_filename)
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(terms_for_excel, f, ensure_ascii=False, indent=2)
+        return FileResponse(
+            path=output_path,
+            filename=f"terminos_tmx_{language}.json",
+            media_type="application/json"
+        )
+    
+    elif format == "csv":
+        output_filename = f"tmx_{tmx_id}.csv"
+        output_path = file_handler.get_path("outputs", output_filename)
+        df.to_csv(output_path, index=False, encoding='utf-8-sig')
+        return FileResponse(
+            path=output_path,
+            filename=f"terminos_tmx_{language}.csv",
+            media_type="text/csv"
+        )
+    
+    # Formato Excel (por defecto)
     excel_filename = f"tmx_{tmx_id}.xlsx"
     excel_path = file_handler.get_path("outputs", excel_filename)
     
-    import pandas as pd
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
-    
-    df = pd.DataFrame(terms_for_excel)
     
     # Crear Excel con formato
     wb = Workbook()
@@ -291,15 +468,26 @@ async def export_tmx_to_excel(tmx_id: str):
             cell.alignment = Alignment(vertical='center')
     
     # Reordenar columnas para mejor visualización
-    df = df[['Número', 'Término', 'Frecuencia', 'Longitud', 'Palabras', 'Idioma']]
+    preferred_order = ['Número', 'Término', 'Frecuencia', 'Longitud', 'Palabras', 'Idioma', 'Traducción']
+    existing_cols = [col for col in preferred_order if col in df.columns]
+    other_cols = [col for col in df.columns if col not in existing_cols]
+    df = df[existing_cols + other_cols]
     
-    # Ajustar anchos
-    ws.column_dimensions['A'].width = 10  # Número
-    ws.column_dimensions['B'].width = 50  # Término
-    ws.column_dimensions['C'].width = 12  # Frecuencia
-    ws.column_dimensions['D'].width = 12  # Longitud
-    ws.column_dimensions['E'].width = 12  # Palabras
-    ws.column_dimensions['F'].width = 12  # Idioma
+    # Ajustar anchos dinámicamente
+    column_widths = {
+        'Número': 10,
+        'Término': 50,
+        'Frecuencia': 12,
+        'Longitud': 12,
+        'Palabras': 12,
+        'Idioma': 12,
+        'Traducción': 50
+    }
+    
+    for idx, col in enumerate(df.columns, 1):
+        col_letter = chr(64 + idx)  # A, B, C, etc.
+        width = column_widths.get(col, 15)
+        ws.column_dimensions[col_letter].width = width
     
     # Congelar primera fila
     ws.freeze_panes = 'A2'
