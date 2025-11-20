@@ -316,35 +316,3 @@ class TMXParser:
         # Comparar solo el código base (antes del guión)
         lang_base = lang_attr.split('-')[0]
         return lang_base == target_lang
-    
-    def parse_with_translations(self, tmx_path: str) -> List[Dict[str, str]]:
-        """
-        Parsear TMX y extraer pares de traducción
-        
-        Returns:
-            Lista de diccionarios con source y target
-        """
-        translations = []
-        
-        try:
-            tree = etree.parse(tmx_path)
-            root = tree.getroot()
-            
-            ns = {'tmx': 'http://www.lisa.org/tmx14'}
-            
-            for tu in root.findall('.//tmx:tu', ns):
-                tuvs = tu.findall('.//tmx:tuv', ns)
-                if len(tuvs) >= 2:
-                    source_seg = tuvs[0].find('.//tmx:seg', ns)
-                    target_seg = tuvs[1].find('.//tmx:seg', ns)
-                    
-                    if source_seg is not None and target_seg is not None:
-                        translations.append({
-                            'source': source_seg.text.strip() if source_seg.text else '',
-                            'target': target_seg.text.strip() if target_seg.text else ''
-                        })
-        
-        except Exception as e:
-            raise Exception(f"Error al parsear TMX: {str(e)}")
-        
-        return translations
