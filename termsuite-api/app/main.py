@@ -1,5 +1,7 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Request
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import uuid
@@ -22,6 +24,12 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Montar archivos estáticos
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+# Templates
+templates = Jinja2Templates(directory="app/templates")
+
 # CORS
 app.add_middleware(
     CORSMiddleware,
@@ -41,8 +49,15 @@ file_handler = FileHandler()
 jobs: Dict[str, dict] = {}
 
 
-@app.get("/")
-async def root():
+@app.get("/", response_class=HTMLResponse)
+async def root(request: Request):
+    """Página principal con interfaz web"""
+    return templates.TemplateResponse("index.html", {"request": request})
+
+
+@app.get("/api")
+async def api_info():
+    """Información de la API"""
     return {
         "message": "TermSuite API",
         "version": "1.0.0",
@@ -51,7 +66,8 @@ async def root():
             "upload_corpus": "/api/upload-corpus",
             "extract": "/api/extract",
             "status": "/api/status/{job_id}",
-            "export": "/api/export/excel/{job_id}"
+            "export": "/api/export/excel/{job_id}",
+            "export_tmx": "/api/export/tmx-excel/{tmx_id}"
         }
     }
 
@@ -75,12 +91,93 @@ async def upload_tmx(
     file_id = str(uuid.uuid4())
     file_path = file_handler.save_upload(file_id, file, "tmx")
     
-    # Parsear TMX para validar y extraer términos del idioma especificado
+    # Parsear TMX para obtener idiomas disponibles y términos
     try:
-        terms = tmx_parser.parse(file_path, language=language)
-        terms_freq = tmx_parser.parse_with_frequency(file_path, language=language)
+        # Obtener idiomas disponibles en el TMX
+        available_languages = tmx_parser.get_available_languages(file_path)
         
-        # Guardar términos parseados con información del idioma y frecuencias
+        # Si se especificó idioma, extraer términos
+        if language:
+            terms = tmx_parser.parse(file_path, language=language)
+            terms_freq = tmx_parser.parse_with_frequency(file_path, language=language)
+            
+            # Guardar términos parseados con información del idioma y frecuencias
+            terms_data = {
+                "language": language,
+                "terms": terms,
+                "frequencies": terms_freq,
+                "total": len(terms),
+                "total_occurrences": sum(terms_freq.values()),
+                "available_languages": available_languages
+            }
+            terms_path = file_handler.get_path("tmx", f"{file_id}_terms.json")
+            with open(terms_path, 'w', encoding='utf-8') as f:
+                json.dump(terms_data, f, ensure_ascii=False, indent=2)
+            
+            lang_msg = f" del idioma '{language}'"
+            message = f"TMX subido exitosamente. {len(terms)} términos{lang_msg} encontrados."
+        else:
+            # Solo guardar idiomas disponibles
+            terms_data = {
+                "available_languages": available_languages
+            }
+            terms_path = file_handler.get_path("tmx", f"{file_id}_terms.json")
+            with open(terms_path, 'w', encoding='utf-8') as f:
+                json.dump(terms_data, f, ensure_ascii=False, indent=2)
+            
+            message = f"TMX subido exitosamente. Idiomas disponibles: {', '.join(available_languages)}"
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error al parsear TMX: {str(e)}")
+    
+    return UploadResponse(
+        file_id=file_id,
+        filename=file.filename,
+        size=os.path.getsize(file_path),
+        message=message
+    )
+
+
+@app.get("/api/tmx-languages/{tmx_id}")
+async def get_tmx_languages(tmx_id: str):
+    """Obtener idiomas disponibles en un TMX subido"""
+    tmx_terms_path = file_handler.get_path("tmx", f"{tmx_id}_terms.json")
+    if not tmx_terms_path.exists():
+        raise HTTPException(status_code=404, detail="TMX no encontrado")
+    
+    with open(tmx_terms_path, 'r', encoding='utf-8') as f:
+        tmx_data = json.load(f)
+    
+    available_languages = tmx_data.get('available_languages', [])
+    
+    return {
+        "tmx_id": tmx_id,
+        "available_languages": available_languages
+    }
+
+
+@app.post("/api/extract-tmx-language")
+async def extract_tmx_language(tmx_id: str, language: str):
+    """Extraer términos de un TMX para un idioma específico"""
+    # Buscar archivo TMX
+    tmx_dir = file_handler.uploads_dir / 'tmx'
+    tmx_file_path = None
+    
+    if tmx_dir.exists():
+        for file in tmx_dir.glob(f"{tmx_id}*"):
+            if file.suffix == '.tmx':
+                tmx_file_path = file
+                break
+    
+    if not tmx_file_path or not tmx_file_path.exists():
+        raise HTTPException(status_code=404, detail="TMX no encontrado")
+    
+    # Extraer términos del idioma especificado
+    try:
+        terms = tmx_parser.parse(str(tmx_file_path), language=language)
+        terms_freq = tmx_parser.parse_with_frequency(str(tmx_file_path), language=language)
+        
+        # Actualizar archivo de términos
         terms_data = {
             "language": language,
             "terms": terms,
@@ -88,19 +185,18 @@ async def upload_tmx(
             "total": len(terms),
             "total_occurrences": sum(terms_freq.values())
         }
-        terms_path = file_handler.get_path("tmx", f"{file_id}_terms.json")
+        terms_path = file_handler.get_path("tmx", f"{tmx_id}_terms.json")
         with open(terms_path, 'w', encoding='utf-8') as f:
             json.dump(terms_data, f, ensure_ascii=False, indent=2)
+        
+        return {
+            "success": True,
+            "language": language,
+            "total_terms": len(terms),
+            "message": f"{len(terms)} términos del idioma '{language}' extraídos"
+        }
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error al parsear TMX: {str(e)}")
-    
-    lang_msg = f" del idioma '{language}'" if language else ""
-    return UploadResponse(
-        file_id=file_id,
-        filename=file.filename,
-        size=os.path.getsize(file_path),
-        message=f"TMX subido exitosamente. {len(terms)} términos{lang_msg} encontrados."
-    )
+        raise HTTPException(status_code=400, detail=f"Error: {str(e)}")
 
 
 @app.post("/api/upload-corpus", response_model=UploadResponse)

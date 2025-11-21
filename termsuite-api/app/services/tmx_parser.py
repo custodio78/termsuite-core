@@ -291,6 +291,51 @@ class TMXParser:
         
         return translations
     
+    def get_available_languages(self, tmx_path: str) -> List[str]:
+        """
+        Obtener lista de idiomas disponibles en el TMX
+        
+        Args:
+            tmx_path: Ruta al archivo TMX
+            
+        Returns:
+            Lista de códigos de idioma únicos
+        """
+        languages = set()
+        
+        try:
+            tree = etree.parse(tmx_path)
+            root = tree.getroot()
+            
+            ns = {'tmx': 'http://www.lisa.org/tmx14'}
+            
+            # Buscar todos los atributos de idioma
+            for tuv in root.findall('.//tmx:tuv', ns):
+                lang_attr = tuv.get('{http://www.w3.org/XML/1998/namespace}lang')
+                if not lang_attr:
+                    lang_attr = tuv.get('lang')
+                
+                if lang_attr:
+                    # Extraer código base (antes del guión)
+                    lang_code = lang_attr.split('-')[0].lower()
+                    languages.add(lang_code)
+            
+            # Si no hay namespace, intentar sin él
+            if not languages:
+                for tuv in root.findall('.//tuv'):
+                    lang_attr = tuv.get('{http://www.w3.org/XML/1998/namespace}lang')
+                    if not lang_attr:
+                        lang_attr = tuv.get('lang')
+                    
+                    if lang_attr:
+                        lang_code = lang_attr.split('-')[0].lower()
+                        languages.add(lang_code)
+        
+        except Exception as e:
+            raise Exception(f"Error al obtener idiomas del TMX: {str(e)}")
+        
+        return sorted(list(languages))
+    
     def _match_language(self, lang_attr: str, target_lang: str) -> bool:
         """
         Comparar códigos de idioma (maneja variantes como en-US, en-GB, etc.)

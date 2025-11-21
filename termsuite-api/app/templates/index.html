@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TermSuite - Extracción Terminológica</title>
+    
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <!-- Header -->
+    <nav class="navbar navbar-dark bg-primary">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1">
+                <i class="fas fa-language"></i> TermSuite - Extracción Terminológica
+            </span>
+            <span class="text-white">
+                <i class="fas fa-info-circle"></i> 
+                <a href="./docs" target="_blank" class="text-white text-decoration-none">API Docs</a>
+            </span>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <div class="row">
+            <!-- Columna Principal -->
+            <div class="col-lg-8">
+                
+                <!-- Paso 1: Subir TMX -->
+                <div class="card mb-4 shadow-sm">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="fas fa-file-upload"></i> Opción A: Extraer Términos de Memoria TMX</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="upload-zone" id="tmx-dropzone">
+                            <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
+                            <p class="text-muted">Arrastra tu archivo TMX aquí o haz click para seleccionar</p>
+                            <input type="file" id="tmx-file" accept=".tmx" hidden>
+                            <button class="btn btn-outline-primary" onclick="document.getElementById('tmx-file').click()">
+                                <i class="fas fa-folder-open"></i> Seleccionar Archivo
+                            </button>
+                        </div>
+                        
+                        <button class="btn btn-primary w-100 mt-3" onclick="uploadTMX()" id="btn-upload-tmx">
+                            <i class="fas fa-upload"></i> Subir TMX
+                        </button>
+                        
+                        <div id="tmx-status" class="alert alert-success mt-3" style="display:none;">
+                            <i class="fas fa-check-circle"></i> <span id="tmx-status-text"></span>
+                        </div>
+                        
+                        <!-- Opciones de extracción TMX (aparecen después de subir) -->
+                        <div id="tmx-extract-options" class="mt-3 p-3 border rounded" style="display:none; background-color: #f8f9fa;">
+                            <h6 class="mb-3"><i class="fas fa-cog"></i> Configurar Extracción</h6>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">
+                                    <strong>Selecciona el idioma a extraer:</strong>
+                                </label>
+                                <select id="tmx-language-select" class="form-select">
+                                    <!-- Se llenará dinámicamente -->
+                                </select>
+                                <button class="btn btn-sm btn-outline-primary mt-2" onclick="selectTMXLanguage()">
+                                    <i class="fas fa-check"></i> Aplicar Idioma
+                                </button>
+                            </div>
+                            
+                            <hr>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <label class="form-label">Frecuencia mínima:</label>
+                                    <input type="number" id="tmx-min-frequency" class="form-control" value="1" min="1">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Top N términos:</label>
+                                    <input type="number" id="tmx-top-n" class="form-control" placeholder="Todos">
+                                </div>
+                            </div>
+                            <div class="row mt-2">
+                                <div class="col-md-6">
+                                    <label class="form-label">Palabras mínimas:</label>
+                                    <input type="number" id="tmx-min-words" class="form-control" value="1" min="1">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Palabras máximas:</label>
+                                    <input type="number" id="tmx-max-words" class="form-control" value="5" min="1">
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="checkbox" id="tmx-include-translation" checked>
+                                    <label class="form-check-label" for="tmx-include-translation">
+                                        Incluir traducciones
+                                    </label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="checkbox" id="tmx-exclude-numbers">
+                                    <label class="form-check-label" for="tmx-exclude-numbers">
+                                        Excluir números
+                                    </label>
+                                </div>
+                            </div>
+                            <button class="btn btn-primary w-100 mt-3" onclick="extractFromTMX()" id="btn-extract-tmx">
+                                <i class="fas fa-file-export"></i> Extraer Términos del TMX
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Paso 2: Subir Corpus -->
+                <div class="card mb-4 shadow-sm">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0"><i class="fas fa-file-alt"></i> Opción B: Extraer Términos de Corpus</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="upload-zone" id="corpus-dropzone">
+                            <i class="fas fa-file-archive fa-3x text-muted mb-3"></i>
+                            <p class="text-muted">Arrastra archivos .txt o .zip aquí</p>
+                            <input type="file" id="corpus-file" accept=".txt,.zip" hidden>
+                            <button class="btn btn-outline-success" onclick="document.getElementById('corpus-file').click()">
+                                <i class="fas fa-folder-open"></i> Seleccionar Archivo
+                            </button>
+                        </div>
+                        
+                        <div class="row mt-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Idioma del corpus:</label>
+                                <select id="extract-language" class="form-select">
+                                    <option value="es">Español</option>
+                                    <option value="en">English</option>
+                                    <option value="fr">Français</option>
+                                    <option value="de">Deutsch</option>
+                                    <option value="it">Italiano</option>
+                                    <option value="pt">Português</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 d-flex align-items-end">
+                                <button class="btn btn-success w-100" onclick="uploadCorpus()" id="btn-upload-corpus">
+                                    <i class="fas fa-upload"></i> Subir Corpus
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div id="corpus-status" class="alert alert-success mt-3" style="display:none;">
+                            <i class="fas fa-check-circle"></i> <span id="corpus-status-text"></span>
+                        </div>
+                        
+                        <!-- Opciones de extracción Corpus (aparecen después de subir) -->
+                        <div id="corpus-extract-options" class="mt-3 p-3 border rounded" style="display:none; background-color: #f8f9fa;">
+                            <h6 class="mb-3"><i class="fas fa-cog"></i> Configurar Extracción</h6>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <label class="form-label">Frecuencia mínima:</label>
+                                    <input type="number" id="min-frequency" class="form-control" value="2" min="1">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Top N términos:</label>
+                                    <input type="number" id="top-n" class="form-control" placeholder="Todos">
+                                </div>
+                            </div>
+                            <div class="row mt-2">
+                                <div class="col-md-6">
+                                    <label class="form-label">Palabras mínimas:</label>
+                                    <input type="number" id="min-words" class="form-control" value="1" min="1">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Palabras máximas:</label>
+                                    <input type="number" id="max-words" class="form-control" value="5" min="1">
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="checkbox" id="include-translation">
+                                    <label class="form-check-label" for="include-translation">
+                                        Incluir traducciones (si hay TMX)
+                                    </label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="checkbox" id="exclude-numbers">
+                                    <label class="form-check-label" for="exclude-numbers">
+                                        Excluir números
+                                    </label>
+                                </div>
+                            </div>
+                            <button class="btn btn-success w-100 mt-3" onclick="extractFromCorpus()" id="btn-extract-corpus">
+                                <i class="fas fa-rocket"></i> Extraer Términos del Corpus
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resultados -->
+                <div class="card mb-4 shadow-sm" id="results-card" style="display:none;">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0"><i class="fas fa-chart-bar"></i> Resultados</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="progress-container" style="display:none;">
+                            <div class="d-flex justify-content-between mb-2">
+                                <span id="progress-text">Procesando...</span>
+                                <span id="progress-percent">0%</span>
+                            </div>
+                            <div class="progress">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                     id="progress-bar" role="progressbar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        
+                        <div id="results-success" style="display:none;">
+                            <div class="alert alert-success">
+                                <i class="fas fa-check-circle"></i> 
+                                <span id="results-message"></span>
+                            </div>
+                            <button class="btn btn-primary" onclick="downloadResults()">
+                                <i class="fas fa-download"></i> Descargar Resultados
+                            </button>
+                        </div>
+                        
+                        <div id="results-error" class="alert alert-danger" style="display:none;">
+                            <i class="fas fa-exclamation-circle"></i> 
+                            <span id="error-message"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Vista Previa -->
+                <div class="card mb-4 shadow-sm" id="preview-card" style="display:none;">
+                    <div class="card-header bg-secondary text-white">
+                        <h5 class="mb-0"><i class="fas fa-eye"></i> Vista Previa (Top 10)</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover" id="preview-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Término</th>
+                                        <th>Frecuencia</th>
+                                        <th>Palabras</th>
+                                        <th>Traducción</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="preview-tbody">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Columna Lateral -->
+            <div class="col-lg-4">
+                <!-- Estado -->
+                <div class="card mb-4 shadow-sm">
+                    <div class="card-header bg-dark text-white">
+                        <h5 class="mb-0"><i class="fas fa-info-circle"></i> Estado</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="status-item">
+                            <i class="fas fa-file-upload text-primary"></i>
+                            <span>TMX:</span>
+                            <span id="status-tmx" class="badge bg-secondary">No subido</span>
+                        </div>
+                        <div class="status-item">
+                            <i class="fas fa-file-alt text-success"></i>
+                            <span>Corpus:</span>
+                            <span id="status-corpus" class="badge bg-secondary">No subido</span>
+                        </div>
+                        <div class="status-item">
+                            <i class="fas fa-cog text-warning"></i>
+                            <span>Último trabajo:</span>
+                            <span id="status-job" class="badge bg-secondary">Ninguno</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Ayuda -->
+                <div class="card mb-4 shadow-sm">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0"><i class="fas fa-question-circle"></i> Ayuda Rápida</h5>
+                    </div>
+                    <div class="card-body">
+                        <h6>Flujo de trabajo:</h6>
+                        <ol class="small">
+                            <li>Sube una memoria TMX para filtrar términos</li>
+                            <li>Sube un corpus para extraer términos nuevos</li>
+                            <li>O exporta directamente los términos del TMX</li>
+                            <li>Configura las opciones de filtrado</li>
+                            <li>Descarga los resultados en tu formato preferido</li>
+                        </ol>
+                        
+                        <h6 class="mt-3">Formatos soportados:</h6>
+                        <ul class="small">
+                            <li><strong>TMX:</strong> Memorias de traducción</li>
+                            <li><strong>TXT:</strong> Archivos de texto plano</li>
+                            <li><strong>ZIP:</strong> Múltiples archivos .txt</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Estadísticas -->
+                <div class="card mb-4 shadow-sm">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0"><i class="fas fa-chart-pie"></i> Estadísticas</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="stat-item">
+                            <span class="stat-label">Términos TMX:</span>
+                            <span class="stat-value" id="stat-tmx-terms">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Documentos corpus:</span>
+                            <span class="stat-value" id="stat-corpus-docs">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Términos extraídos:</span>
+                            <span class="stat-value" id="stat-extracted">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div id="toast" class="toast" role="alert">
+            <div class="toast-header">
+                <i class="fas fa-bell me-2"></i>
+                <strong class="me-auto">Notificación</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+            </div>
+            <div class="toast-body" id="toast-body"></div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
