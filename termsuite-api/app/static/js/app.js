@@ -499,6 +499,159 @@ function updateStats(type, message) {
     }
 }
 
+// Debug TMX - Buscar término específico
+async function debugTMX() {
+    if (!state.tmxId) {
+        showToast('Primero debes subir un TMX', 'warning');
+        return;
+    }
+    
+    const searchTerm = document.getElementById('tmx-search-term').value.trim();
+    
+    if (!searchTerm) {
+        showToast('Ingresa un término a buscar', 'warning');
+        return;
+    }
+    
+    showToast(`Buscando "${searchTerm}" en TMX...`, 'info');
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/tmx-debug/${state.tmxId}?search=${encodeURIComponent(searchTerm)}`);
+        const data = await response.json();
+        
+        if (response.ok) {
+            // Mostrar resultados en el panel integrado
+            displaySearchResults(searchTerm, data);
+            
+            // También en consola para debugging
+            console.log('Resultados de búsqueda:', data);
+            
+        } else {
+            showToast(`Error: ${data.detail}`, 'error');
+        }
+    } catch (error) {
+        showToast(`Error: ${error.message}`, 'error');
+    }
+}
+
+// Mostrar resultados de búsqueda en panel integrado
+function displaySearchResults(searchTerm, data) {
+    const resultsContainer = document.getElementById('search-results');
+    const resultsBody = document.getElementById('search-results-body');
+    const termDisplay = document.getElementById('search-term-display');
+    
+    // Mostrar el término buscado
+    termDisplay.textContent = `"${searchTerm}"`;
+    
+    // Construir HTML de resultados
+    let html = '';
+    
+    for (const [lang, info] of Object.entries(data.details)) {
+        if (info.search) {
+            const langName = getLangName(lang);
+            
+            if (info.search.exact_match) {
+                // Coincidencia exacta
+                html += `
+                    <div class="alert alert-success mb-2 py-2">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-check-circle me-2"></i>
+                            <div class="flex-grow-1">
+                                <strong>${langName} (${lang})</strong>: Encontrado
+                            </div>
+                            <span class="badge bg-success">${info.search.frequency}x</span>
+                        </div>
+                    </div>
+                `;
+            } else if (info.search.partial_matches.length > 0) {
+                // Coincidencias parciales
+                html += `
+                    <div class="alert alert-warning mb-2 py-2">
+                        <div class="d-flex align-items-center mb-1">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <div class="flex-grow-1">
+                                <strong>${langName} (${lang})</strong>: ${info.search.partial_matches.length} coincidencias parciales
+                            </div>
+                        </div>
+                        <small class="ms-4">
+                `;
+                
+                info.search.partial_matches.slice(0, 5).forEach(m => {
+                    html += `
+                        <div class="d-flex justify-content-between align-items-center mt-1">
+                            <span class="text-muted">"${m.term}"</span>
+                            <span class="badge bg-warning text-dark">${m.frequency}x</span>
+                        </div>
+                    `;
+                });
+                
+                if (info.search.partial_matches.length > 5) {
+                    html += `<div class="text-muted mt-1">... y ${info.search.partial_matches.length - 5} más</div>`;
+                }
+                
+                html += `
+                        </small>
+                    </div>
+                `;
+            } else {
+                // No encontrado
+                html += `
+                    <div class="alert alert-danger mb-2 py-2">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-times-circle me-2"></i>
+                            <div class="flex-grow-1">
+                                <strong>${langName} (${lang})</strong>: No encontrado
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+    }
+    
+    // Agregar estadísticas generales
+    html += `
+        <div class="mt-2 p-2 bg-light rounded">
+            <small class="text-muted">
+                <strong>Estadísticas del TMX:</strong><br>
+    `;
+    
+    for (const [lang, info] of Object.entries(data.details)) {
+        const langName = getLangName(lang);
+        html += `
+            ${langName}: ${info.total_unique_terms.toLocaleString()} términos únicos, 
+            ${info.total_occurrences.toLocaleString()} ocurrencias<br>
+        `;
+    }
+    
+    html += `
+            </small>
+        </div>
+    `;
+    
+    resultsBody.innerHTML = html;
+    resultsContainer.style.display = 'block';
+    
+    // Scroll suave al panel de resultados
+    resultsContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// Obtener nombre legible del idioma
+function getLangName(code) {
+    const langNames = {
+        'es': 'Español',
+        'en': 'English',
+        'fr': 'Français',
+        'de': 'Deutsch',
+        'it': 'Italiano',
+        'pt': 'Português',
+        'eu': 'Euskara',
+        'ca': 'Català',
+        'gl': 'Galego'
+    };
+    return langNames[code] || code.toUpperCase();
+}
+
 // Show Toast
 function showToast(message, type = 'info') {
     const toast = document.getElementById('toast');

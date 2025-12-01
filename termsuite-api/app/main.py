@@ -156,6 +156,73 @@ async def get_tmx_languages(tmx_id: str):
     }
 
 
+@app.get("/api/tmx-debug/{tmx_id}")
+async def debug_tmx(tmx_id: str, search: Optional[str] = None):
+    """
+    Endpoint de diagnóstico para verificar términos en TMX
+    
+    Args:
+        tmx_id: ID del TMX
+        search: Término a buscar (opcional)
+    """
+    # Buscar archivo TMX
+    tmx_dir = file_handler.uploads_dir / 'tmx'
+    tmx_file_path = None
+    
+    if tmx_dir.exists():
+        for file in tmx_dir.glob(f"{tmx_id}*"):
+            if file.suffix == '.tmx':
+                tmx_file_path = file
+                break
+    
+    if not tmx_file_path or not tmx_file_path.exists():
+        raise HTTPException(status_code=404, detail="TMX no encontrado")
+    
+    try:
+        # Obtener idiomas
+        languages = tmx_parser.get_available_languages(str(tmx_file_path))
+        
+        result = {
+            "tmx_id": tmx_id,
+            "languages": languages,
+            "details": {}
+        }
+        
+        # Extraer información por idioma
+        for lang in languages:
+            terms = tmx_parser.parse(str(tmx_file_path), language=lang)
+            terms_freq = tmx_parser.parse_with_frequency(str(tmx_file_path), language=lang)
+            
+            lang_info = {
+                "total_unique_terms": len(terms),
+                "total_occurrences": sum(terms_freq.values()),
+                "top_10": sorted(terms_freq.items(), key=lambda x: x[1], reverse=True)[:10]
+            }
+            
+            # Si hay búsqueda, buscar el término
+            if search:
+                search_lower = search.lower()
+                exact_match = search in terms
+                partial_matches = [t for t in terms if search_lower in t.lower()][:10]
+                
+                lang_info["search"] = {
+                    "term": search,
+                    "exact_match": exact_match,
+                    "frequency": terms_freq.get(search, 0) if exact_match else 0,
+                    "partial_matches": [
+                        {"term": t, "frequency": terms_freq.get(t, 0)} 
+                        for t in partial_matches
+                    ]
+                }
+            
+            result["details"][lang] = lang_info
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error al analizar TMX: {str(e)}")
+
+
 @app.post("/api/extract-tmx-language")
 async def extract_tmx_language(tmx_id: str, language: str, target_language: Optional[str] = None):
     """Extraer términos de un TMX para un idioma específico con traducción opcional"""
@@ -452,8 +519,9 @@ async def export_tmx_to_excel(
                     target_lang=target_lang
                 )
                 
-                # Crear diccionario de traducciones exactas
-                trans_dict_exact = {}
+                # Crear diccionario de traducciones exactas (con múltiples traducciones)
+                from collections import defaultdict
+                trans_dict_exact = defaultdict(list)
                 # Crear lista de segmentos para búsqueda parcial
                 trans_segments = []
                 
@@ -461,13 +529,15 @@ async def export_tmx_to_excel(
                     source = trans.get('source', '').strip()
                     target = trans.get('target', '').strip()
                     if source and target:
-                        # Guardar traducción exacta
-                        trans_dict_exact[source.lower()] = target
+                        # Guardar traducción exacta (puede haber múltiples)
+                        source_lower = source.lower()
+                        if target not in trans_dict_exact[source_lower]:
+                            trans_dict_exact[source_lower].append(target)
                         # Guardar para búsqueda parcial
                         trans_segments.append({
                             'source': source,
                             'target': target,
-                            'source_lower': source.lower()
+                            'source_lower': source_lower
                         })
                 
                 # Agregar traducción a cada término
@@ -477,22 +547,32 @@ async def export_tmx_to_excel(
                     
                     # 1. Buscar coincidencia exacta
                     if term_lower in trans_dict_exact:
-                        item['Traducción'] = trans_dict_exact[term_lower]
+                        translations_list = trans_dict_exact[term_lower]
+                        # Si hay múltiples traducciones, separarlas con " | "
+                        item['Traducción'] = ' | '.join(translations_list)
                         item['Tipo Match'] = 'Exacto'
+                        item['Variantes'] = len(translations_list)
                     else:
                         # 2. Buscar en segmentos (coincidencia parcial)
                         found = False
+                        partial_translations = []
+                        
                         for seg in trans_segments:
                             if term_lower in seg['source_lower']:
                                 # Encontrado en un segmento
-                                item['Traducción'] = f"[Segmento] {seg['target']}"
-                                item['Tipo Match'] = 'Parcial'
-                                found = True
-                                break
+                                if seg['target'] not in partial_translations:
+                                    partial_translations.append(seg['target'])
+                        
+                        if partial_translations:
+                            item['Traducción'] = ' | '.join(partial_translations)
+                            item['Tipo Match'] = 'Parcial'
+                            item['Variantes'] = len(partial_translations)
+                            found = True
                         
                         if not found:
                             item['Traducción'] = ''
                             item['Tipo Match'] = 'No encontrado'
+                            item['Variantes'] = 0
                 
             except Exception as e:
                 # Si hay error al parsear traducciones, agregar columna vacía

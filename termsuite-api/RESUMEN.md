@@ -53,11 +53,13 @@ Cuando subes un TMX multiidioma:
 
 ### Columnas en el Excel
 
-| Número | Término | Frecuencia | Longitud | Palabras | Idioma | Traducción | Tipo Match |
-|--------|---------|------------|----------|----------|--------|------------|------------|
-| 1 | elevador | 45 | 8 | 1 | es | elevator | Exacto |
-| 2 | sistema hidráulico | 32 | 18 | 2 | es | hydraulic system | Exacto |
-| 3 | plataforma | 28 | 10 | 1 | es | platform | Exacto |
+| Número | Término | Frecuencia | Longitud | Palabras | Idioma | Traducción | Tipo Match | Variantes |
+|--------|---------|------------|----------|----------|--------|------------|------------|-----------|
+| 1 | elevador | 45 | 8 | 1 | es | elevator | Exacto | 1 |
+| 2 | sistema hidráulico | 32 | 18 | 2 | es | hydraulic system | Exacto | 1 |
+| 3 | válvula | 28 | 7 | 1 | es | valve \| tap | Exacto | 2 |
+
+**Nota:** Si un término tiene múltiples traducciones, se muestran separadas por ` | `
 
 ### Ventajas
 
@@ -67,6 +69,8 @@ Cuando subes un TMX multiidioma:
 ✅ **Traducciones precisas** del idioma configurado  
 ✅ **Soporte multiidioma** (es, en, fr, de, it, pt, eu, ca, gl, etc.)  
 ✅ **Interfaz intuitiva** con selectores dinámicos  
+✅ **Herramienta de búsqueda** para verificar términos específicos  
+✅ **Limpieza automática** de bullets y marcadores de lista  
 
 ### Casos de Uso
 
@@ -83,3 +87,107 @@ Cuando subes un TMX multiidioma:
 - Solo aparece selector de idioma origen
 - No hay selector de traducción
 - Extrae términos sin traducciones
+
+## 🔍 Herramienta de Búsqueda
+
+Si un término no aparece en el Excel, usa la herramienta de búsqueda integrada:
+
+### Cómo usar:
+
+1. Después de subir el TMX
+2. En "Configurar Extracción"
+3. Escribe el término: `coupling`
+4. Presiona Enter o click en "Buscar en TMX"
+5. Aparece un panel con resultados detallados
+
+### Panel de Resultados:
+
+El panel muestra para cada idioma:
+
+**✓ Encontrado (verde)**
+- Término encontrado exactamente
+- Muestra la frecuencia (ej: 123x)
+
+**~ Coincidencias parciales (amarillo)**
+- Términos similares encontrados
+- Lista hasta 5 coincidencias con frecuencias
+- Útil para encontrar variantes
+
+**✗ No encontrado (rojo)**
+- El término no existe en ese idioma
+- Verifica que seleccionaste el idioma correcto
+
+### Ejemplo visual:
+
+```
+Resultados: "coupling"
+
+✓ English (en): Encontrado                    [123x]
+
+✗ Español (es): No encontrado
+
+Estadísticas del TMX:
+English: 1,234 términos únicos, 5,678 ocurrencias
+Español: 1,189 términos únicos, 5,432 ocurrencias
+```
+
+**Solución:** Selecciona idioma origen = English (en)
+
+## 🧹 Limpieza de Bullets
+
+La aplicación limpia automáticamente bullets y marcadores:
+
+| Original | Limpiado |
+|----------|----------|
+| `a) elevador` | `elevador` |
+| `1. plataforma` | `plataforma` |
+| `- cilindro` | `cilindro` |
+| `• pistón` | `pistón` |
+| `coupling` | `coupling` (sin cambios) |
+
+**Nota:** Solo se eliminan bullets con espacio después, preservando términos válidos como "c-clamp".
+
+## 🔄 Múltiples Traducciones
+
+Si un término tiene varias traducciones en el TMX, **todas se incluyen** en el Excel:
+
+### Ejemplo:
+
+En tu TMX:
+```xml
+<tu>
+  <tuv xml:lang="es"><seg>válvula</seg></tuv>
+  <tuv xml:lang="en"><seg>valve</seg></tuv>
+</tu>
+<tu>
+  <tuv xml:lang="es"><seg>válvula</seg></tuv>
+  <tuv xml:lang="en"><seg>tap</seg></tuv>
+</tu>
+```
+
+En el Excel:
+```
+Término: válvula
+Traducción: valve | tap
+Variantes: 2
+```
+
+### Ventajas:
+- ✅ **No pierdes información** de traducciones alternativas
+- ✅ **Fácil de identificar** términos con múltiples significados
+- ✅ **Columna "Variantes"** indica cuántas traducciones hay
+- ✅ **Separador claro** (` | `) para distinguir cada traducción
+
+### Casos de uso:
+
+**Polisemia (múltiples significados):**
+- `válvula` → `valve | tap | faucet` (3 variantes)
+- Útil para identificar términos ambiguos
+
+**Variantes regionales:**
+- `ordenador` → `computer | PC` (2 variantes)
+- Útil para localización
+
+**Sinónimos aceptados:**
+- `elevador` → `elevator | lift` (2 variantes)
+- Útil para terminología flexible
