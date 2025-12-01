@@ -2,10 +2,45 @@ from lxml import etree
 from typing import List, Dict
 from pathlib import Path
 from collections import Counter
+import re
 
 
 class TMXParser:
     """Parser para archivos TMX (Translation Memory eXchange)"""
+    
+    def _clean_term(self, term: str) -> str:
+        """
+        Limpiar término eliminando bullets, marcadores de lista y espacios extra
+        
+        Args:
+            term: Término a limpiar
+            
+        Returns:
+            Término limpio
+        """
+        if not term:
+            return term
+        
+        # Eliminar bullets y marcadores al inicio
+        # Patrones: a), b), 1., 2., 1-, 2-, -, •, *, etc.
+        patterns = [
+            r'^\s*[a-z]\)\s*',           # a), b), c)
+            r'^\s*[A-Z]\)\s*',           # A), B), C)
+            r'^\s*\d+\.\s*',             # 1., 2., 3.
+            r'^\s*\d+\)\s*',             # 1), 2), 3)
+            r'^\s*\d+-\s*',              # 1-, 2-, 3-
+            r'^\s*[-•*▪▫■□●○]\s+',       # -, •, *, etc.
+            r'^\s*[·]\s+',               # ·
+        ]
+        
+        cleaned = term
+        for pattern in patterns:
+            cleaned = re.sub(pattern, '', cleaned)
+        
+        # Eliminar espacios extra al inicio y final
+        cleaned = cleaned.strip()
+        
+        return cleaned
     
     def parse(self, tmx_path: str, language: str = None) -> List[str]:
         """
@@ -42,7 +77,7 @@ class TMXParser:
                     
                     seg = tuv.find('.//tmx:seg', ns)
                     if seg is not None and seg.text:
-                        term = seg.text.strip()
+                        term = self._clean_term(seg.text.strip())
                         if term:
                             terms.add(term)
             
@@ -59,7 +94,7 @@ class TMXParser:
                     
                     seg = tuv.find('.//seg')
                     if seg is not None and seg.text:
-                        term = seg.text.strip()
+                        term = self._clean_term(seg.text.strip())
                         if term:
                             terms.add(term)
         
@@ -164,7 +199,7 @@ class TMXParser:
                     
                     seg = tuv.find('.//tmx:seg', ns)
                     if seg is not None and seg.text:
-                        term = seg.text.strip()
+                        term = self._clean_term(seg.text.strip())
                         if term:
                             terms.append(term)
             
@@ -181,7 +216,7 @@ class TMXParser:
                     
                     seg = tuv.find('.//seg')
                     if seg is not None and seg.text:
-                        term = seg.text.strip()
+                        term = self._clean_term(seg.text.strip())
                         if term:
                             terms.append(term)
         
@@ -238,20 +273,26 @@ class TMXParser:
                             target_seg = target_tuv.find('.//tmx:seg', ns)
                             
                             if source_seg is not None and target_seg is not None:
-                                translations.append({
-                                    'source': source_seg.text.strip() if source_seg.text else '',
-                                    'target': target_seg.text.strip() if target_seg.text else ''
-                                })
+                                source_text = self._clean_term(source_seg.text.strip()) if source_seg.text else ''
+                                target_text = self._clean_term(target_seg.text.strip()) if target_seg.text else ''
+                                if source_text and target_text:
+                                    translations.append({
+                                        'source': source_text,
+                                        'target': target_text
+                                    })
                     else:
                         # Sin idioma especificado, usar primer y segundo <tuv>
                         source_seg = tuvs[0].find('.//tmx:seg', ns)
                         target_seg = tuvs[1].find('.//tmx:seg', ns)
                         
                         if source_seg is not None and target_seg is not None:
-                            translations.append({
-                                'source': source_seg.text.strip() if source_seg.text else '',
-                                'target': target_seg.text.strip() if target_seg.text else ''
-                            })
+                            source_text = self._clean_term(source_seg.text.strip()) if source_seg.text else ''
+                            target_text = self._clean_term(target_seg.text.strip()) if target_seg.text else ''
+                            if source_text and target_text:
+                                translations.append({
+                                    'source': source_text,
+                                    'target': target_text
+                                })
             
             # Si no hay namespace, intentar sin él
             if not translations:
@@ -279,19 +320,25 @@ class TMXParser:
                                 target_seg = target_tuv.find('.//seg')
                                 
                                 if source_seg is not None and target_seg is not None:
-                                    translations.append({
-                                        'source': source_seg.text.strip() if source_seg.text else '',
-                                        'target': target_seg.text.strip() if target_seg.text else ''
-                                    })
+                                    source_text = self._clean_term(source_seg.text.strip()) if source_seg.text else ''
+                                    target_text = self._clean_term(target_seg.text.strip()) if target_seg.text else ''
+                                    if source_text and target_text:
+                                        translations.append({
+                                            'source': source_text,
+                                            'target': target_text
+                                        })
                         else:
                             source_seg = tuvs[0].find('.//seg')
                             target_seg = tuvs[1].find('.//seg')
                             
                             if source_seg is not None and target_seg is not None:
-                                translations.append({
-                                    'source': source_seg.text.strip() if source_seg.text else '',
-                                    'target': target_seg.text.strip() if target_seg.text else ''
-                                })
+                                source_text = self._clean_term(source_seg.text.strip()) if source_seg.text else ''
+                                target_text = self._clean_term(target_seg.text.strip()) if target_seg.text else ''
+                                if source_text and target_text:
+                                    translations.append({
+                                        'source': source_text,
+                                        'target': target_text
+                                    })
         
         except Exception as e:
             raise Exception(f"Error al parsear TMX: {str(e)}")
