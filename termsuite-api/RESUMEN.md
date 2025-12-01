@@ -18,11 +18,13 @@ Cuando subes un TMX multiidioma:
 3. **🔄 Seleccionas los idiomas**
    - Ejemplo: Origen = Español (es), Traducción = English (en)
    - El sistema valida que sean diferentes
+   - **☑️ Opción**: Extraer términos individuales con TermSuite
 
 4. **✅ Aplicas idiomas** 
    - Click en "Aplicar Idiomas"
    - Extrae términos del idioma origen
    - Configura las traducciones al idioma destino
+   - Si activaste TermSuite, extrae términos individuales de los segmentos
 
 5. **⚙️ Configuras opciones de filtrado**
    - Frecuencia mínima
@@ -71,6 +73,7 @@ Cuando subes un TMX multiidioma:
 ✅ **Interfaz intuitiva** con selectores dinámicos  
 ✅ **Herramienta de búsqueda** para verificar términos específicos  
 ✅ **Limpieza automática** de bullets y marcadores de lista  
+✅ **Dos modos de extracción**: Segmentos completos o términos individuales  
 
 ### Casos de Uso
 
@@ -132,6 +135,58 @@ Español: 1,189 términos únicos, 5,432 ocurrencias
 ```
 
 **Solución:** Selecciona idioma origen = English (en)
+
+## 🔧 Dos Modos de Extracción
+
+### Modo 1: Extracción Directa (por defecto)
+
+**Extrae segmentos completos del TMX**
+
+```
+TMX contiene:
+"La válvula de seguridad debe ser inspeccionada regularmente."
+
+Extrae:
+"La válvula de seguridad debe ser inspeccionada regularmente."
+```
+
+**Cuándo usar:**
+- TMX es un glosario con términos individuales
+- Quieres ver el contexto completo
+- Necesitas frases de ejemplo
+
+### Modo 2: Extracción con TermSuite ☑️
+
+**Analiza los segmentos y extrae términos técnicos individuales**
+
+```
+TMX contiene:
+"La válvula de seguridad debe ser inspeccionada regularmente."
+
+Analiza con TermSuite y extrae:
+- válvula
+- válvula de seguridad
+- seguridad
+```
+
+**Cuándo usar:**
+- TMX contiene frases completas (memoria de traducción)
+- Quieres extraer solo los términos técnicos
+- Necesitas un glosario a partir de segmentos largos
+
+**Cómo activar:**
+1. Después de subir el TMX
+2. Marca ☑️ "Extraer términos individuales con TermSuite"
+3. Click en "Aplicar Idiomas"
+
+### Comparación
+
+| Característica | Modo Directo | Modo TermSuite |
+|----------------|--------------|----------------|
+| Velocidad | ⚡ Rápido | 🐢 Más lento |
+| Resultado | Segmentos completos | Términos individuales |
+| Mejor para | Glosarios | Memorias de traducción |
+| Requiere | - | Java + TermSuite |
 
 ## 🧹 Limpieza de Bullets
 

@@ -224,8 +224,21 @@ async def debug_tmx(tmx_id: str, search: Optional[str] = None):
 
 
 @app.post("/api/extract-tmx-language")
-async def extract_tmx_language(tmx_id: str, language: str, target_language: Optional[str] = None):
-    """Extraer términos de un TMX para un idioma específico con traducción opcional"""
+async def extract_tmx_language(
+    tmx_id: str, 
+    language: str, 
+    target_language: Optional[str] = None,
+    use_termsuite: bool = False
+):
+    """
+    Extraer términos de un TMX para un idioma específico con traducción opcional
+    
+    Args:
+        tmx_id: ID del TMX
+        language: Idioma origen
+        target_language: Idioma destino (opcional)
+        use_termsuite: Si True, usa TermSuite para extraer términos individuales de los segmentos
+    """
     # Buscar archivo TMX
     tmx_dir = file_handler.uploads_dir / 'tmx'
     tmx_file_path = None
@@ -241,8 +254,49 @@ async def extract_tmx_language(tmx_id: str, language: str, target_language: Opti
     
     # Extraer términos del idioma especificado
     try:
-        terms = tmx_parser.parse(str(tmx_file_path), language=language)
-        terms_freq = tmx_parser.parse_with_frequency(str(tmx_file_path), language=language)
+        if use_termsuite:
+            # Modo TermSuite: Extraer términos individuales de los segmentos
+            segments = tmx_parser.parse(str(tmx_file_path), language=language)
+            
+            # Crear archivo temporal con los segmentos
+            temp_corpus_path = file_handler.get_path("tmx", f"{tmx_id}_corpus_{language}.txt")
+            with open(temp_corpus_path, 'w', encoding='utf-8') as f:
+                for segment in segments:
+                    f.write(segment + '\n')
+            
+            # Ejecutar TermSuite sobre los segmentos
+            temp_output_path = file_handler.get_path("tmx", f"{tmx_id}_termsuite_{language}.json")
+            termsuite_service.extract_terms(
+                corpus_path=str(temp_corpus_path),
+                output_path=str(temp_output_path),
+                language=language,
+                min_frequency=1
+            )
+            
+            # Leer resultados de TermSuite
+            with open(temp_output_path, 'r', encoding='utf-8') as f:
+                termsuite_results = json.load(f)
+            
+            # Extraer términos y frecuencias
+            terms = []
+            terms_freq = {}
+            
+            if "terms" in termsuite_results:
+                for term_obj in termsuite_results["terms"]:
+                    term = term_obj.get("groupingKey", "")
+                    freq = term_obj.get("frequency", 1)
+                    if term:
+                        terms.append(term)
+                        terms_freq[term] = freq
+            
+            # Limpiar archivos temporales
+            temp_corpus_path.unlink(missing_ok=True)
+            temp_output_path.unlink(missing_ok=True)
+            
+        else:
+            # Modo directo: Extraer segmentos completos
+            terms = tmx_parser.parse(str(tmx_file_path), language=language)
+            terms_freq = tmx_parser.parse_with_frequency(str(tmx_file_path), language=language)
         
         # Actualizar archivo de términos
         terms_data = {
@@ -250,7 +304,8 @@ async def extract_tmx_language(tmx_id: str, language: str, target_language: Opti
             "terms": terms,
             "frequencies": terms_freq,
             "total": len(terms),
-            "total_occurrences": sum(terms_freq.values())
+            "total_occurrences": sum(terms_freq.values()),
+            "extraction_mode": "termsuite" if use_termsuite else "direct"
         }
         
         # Si se especifica idioma destino, guardarlo también
@@ -261,7 +316,8 @@ async def extract_tmx_language(tmx_id: str, language: str, target_language: Opti
         with open(terms_path, 'w', encoding='utf-8') as f:
             json.dump(terms_data, f, ensure_ascii=False, indent=2)
         
-        msg = f"{len(terms)} términos del idioma '{language}' extraídos"
+        mode_msg = " (con TermSuite)" if use_termsuite else ""
+        msg = f"{len(terms)} términos del idioma '{language}' extraídos{mode_msg}"
         if target_language:
             msg += f" (traducción: {target_language})"
         
@@ -270,6 +326,7 @@ async def extract_tmx_language(tmx_id: str, language: str, target_language: Opti
             "language": language,
             "target_language": target_language,
             "total_terms": len(terms),
+            "extraction_mode": "termsuite" if use_termsuite else "direct",
             "message": msg
         }
     except Exception as e:

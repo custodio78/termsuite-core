@@ -1,8 +1,24 @@
 # TMX de Prueba - Múltiples Traducciones
 
-## Archivo: `test_multiple_translations.tmx`
+## Archivos Disponibles
 
-Este archivo TMX de prueba está diseñado para verificar el correcto funcionamiento de la extracción de términos con múltiples traducciones.
+### 1. `test_terms_glossary.tmx` ⭐ RECOMENDADO
+
+**Tipo:** Glosario de términos individuales  
+**Contenido:** Términos únicos con múltiples traducciones  
+**Uso:** Probar extracción de términos con variantes
+
+### 2. `test_multiple_translations.tmx`
+
+**Tipo:** Memoria de traducción con segmentos completos  
+**Contenido:** Frases completas con términos repetidos  
+**Uso:** Probar búsqueda parcial en segmentos
+
+---
+
+## Archivo Recomendado: `test_terms_glossary.tmx`
+
+Este archivo TMX está diseñado específicamente para verificar el correcto funcionamiento de la extracción de términos con múltiples traducciones.
 
 ## Características
 
@@ -65,19 +81,55 @@ Este archivo TMX de prueba está diseñado para verificar el correcto funcionami
 
 Estos deben limpiarse automáticamente.
 
-## Frecuencias Esperadas
+## Frecuencias Esperadas (`test_terms_glossary.tmx`)
 
 | Término (es) | Frecuencia | Traducciones (en) | Variantes |
 |--------------|------------|-------------------|-----------|
 | válvula | 4 | valve \| tap \| faucet | 3 |
 | elevador | 4 | elevator \| lift | 2 |
 | acoplamiento | 4 | coupling \| connection \| joint | 3 |
+| ajuste | 4 | adjustment \| setting \| tuning | 3 |
 | bomba | 3 | pump \| pumping unit | 2 |
 | cilindro | 3 | cylinder \| barrel | 2 |
-| ajuste | 4 | adjustment \| setting \| tuning | 3 |
-| plataforma | 3 | platform | 1 |
 | motor | 3 | motor \| engine | 2 |
 | sistema | 3 | system \| setup | 2 |
+| plataforma | 3 | platform | 1 |
+| válvula de seguridad | 1 | safety valve | 1 |
+| bomba hidráulica | 1 | hydraulic pump | 1 |
+| cilindro hidráulico | 1 | hydraulic cylinder | 1 |
+| motor eléctrico | 1 | electric motor | 1 |
+| sistema hidráulico | 1 | hydraulic system | 1 |
+| plataforma elevadora | 1 | lifting platform | 1 |
+
+## Diferencia Entre los Dos TMX
+
+### `test_terms_glossary.tmx` (Glosario)
+
+```xml
+<tu>
+  <tuv xml:lang="es"><seg>válvula</seg></tuv>
+  <tuv xml:lang="en"><seg>valve</seg></tuv>
+</tu>
+```
+
+**Resultado:**
+- ✅ Búsqueda exacta: "válvula" → Encontrado
+- ✅ Extracción: 9 términos únicos
+- ✅ Múltiples traducciones visibles
+
+### `test_multiple_translations.tmx` (Segmentos)
+
+```xml
+<tu>
+  <tuv xml:lang="es"><seg>La válvula de seguridad debe ser inspeccionada...</seg></tuv>
+  <tuv xml:lang="en"><seg>The safety valve must be inspected...</seg></tuv>
+</tu>
+```
+
+**Resultado:**
+- ⚠️ Búsqueda parcial: "válvula" → 4 coincidencias en segmentos
+- ⚠️ Extracción: 28 segmentos completos
+- ⚠️ Traducciones en contexto de frases
 
 ## Cómo Usar
 
@@ -85,7 +137,7 @@ Estos deben limpiarse automáticamente.
 ```bash
 # Desde la interfaz web
 1. Click en "Seleccionar Archivo"
-2. Elegir: examples/test_multiple_translations.tmx
+2. Elegir: examples/test_terms_glossary.tmx  ⭐ RECOMENDADO
 3. Click en "Subir TMX"
 ```
 

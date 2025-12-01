@@ -203,7 +203,10 @@ async function selectTMXLanguage() {
         ? `${sourceLanguage} → ${targetLanguage}` 
         : sourceLanguage;
     
-    showToast(`Extrayendo términos: ${langMsg}...`, 'info');
+    const useTermSuite = document.getElementById('tmx-use-termsuite').checked;
+    const modeMsg = useTermSuite ? ' (con TermSuite)' : '';
+    
+    showToast(`Extrayendo términos: ${langMsg}${modeMsg}...`, 'info');
     
     try {
         let url = `${API_BASE}/api/extract-tmx-language?tmx_id=${state.tmxId}&language=${sourceLanguage}`;
@@ -211,6 +214,11 @@ async function selectTMXLanguage() {
         // Agregar idioma destino si está visible
         if (targetContainer.style.display !== 'none') {
             url += `&target_language=${targetLanguage}`;
+        }
+        
+        // Agregar modo TermSuite
+        if (useTermSuite) {
+            url += `&use_termsuite=true`;
         }
         
         const response = await fetch(url, {

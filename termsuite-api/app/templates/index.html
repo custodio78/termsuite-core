@@ -76,6 +76,18 @@
                                 </select>
                             </div>
                             
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" id="tmx-use-termsuite">
+                                <label class="form-check-label" for="tmx-use-termsuite">
+                                    <small>
+                                        Extraer términos individuales con TermSuite
+                                        <i class="fas fa-info-circle text-info" 
+                                           data-bs-toggle="tooltip" 
+                                           title="Analiza los segmentos del TMX y extrae términos técnicos individuales (ej: 'válvula', 'bomba') en lugar de segmentos completos"></i>
+                                    </small>
+                                </label>
+                            </div>
+                            
                             <button class="btn btn-sm btn-primary w-100 mt-2" onclick="selectTMXLanguage()">
                                 <i class="fas fa-check"></i> Aplicar Idiomas
                             </button>
