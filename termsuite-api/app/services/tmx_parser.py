@@ -191,13 +191,14 @@ class TMXParser:
         # Contar frecuencias
         return dict(Counter(terms))
     
-    def parse_with_translations(self, tmx_path: str, source_lang: str = None) -> List[Dict[str, str]]:
+    def parse_with_translations(self, tmx_path: str, source_lang: str = None, target_lang: str = None) -> List[Dict[str, str]]:
         """
         Parsear TMX y extraer pares de traducción
         
         Args:
             tmx_path: Ruta al archivo TMX
             source_lang: Idioma origen (ej: 'es'). Si es None, usa el primer <tuv>
+            target_lang: Idioma destino (ej: 'en'). Si es None, usa cualquier idioma diferente al origen
             
         Returns:
             Lista de diccionarios con source y target
@@ -225,7 +226,11 @@ class TMXParser:
                             
                             if lang_attr and self._match_language(lang_attr, source_lang):
                                 source_tuv = tuv
-                            elif lang_attr and not self._match_language(lang_attr, source_lang):
+                            elif target_lang and lang_attr and self._match_language(lang_attr, target_lang):
+                                # Si se especifica idioma destino, buscar específicamente ese
+                                target_tuv = tuv
+                            elif not target_lang and lang_attr and not self._match_language(lang_attr, source_lang):
+                                # Si no se especifica destino, usar cualquier otro idioma
                                 target_tuv = tuv
                         
                         if source_tuv is not None and target_tuv is not None:
@@ -264,7 +269,9 @@ class TMXParser:
                                 
                                 if lang_attr and self._match_language(lang_attr, source_lang):
                                     source_tuv = tuv
-                                elif lang_attr:
+                                elif target_lang and lang_attr and self._match_language(lang_attr, target_lang):
+                                    target_tuv = tuv
+                                elif not target_lang and lang_attr:
                                     target_tuv = tuv
                             
                             if source_tuv is not None and target_tuv is not None:

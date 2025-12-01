@@ -61,10 +61,16 @@ class FileHandler:
         extract_dir.mkdir(parents=True, exist_ok=True)
         
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            # Extraer solo archivos .txt
+            # Extraer solo archivos .txt, aplanando la estructura de directorios
             for file_info in zip_ref.filelist:
-                if file_info.filename.endswith('.txt'):
-                    zip_ref.extract(file_info, extract_dir)
+                if file_info.filename.endswith('.txt') and not file_info.is_dir():
+                    # Obtener solo el nombre del archivo sin la ruta
+                    filename = Path(file_info.filename).name
+                    # Extraer el contenido
+                    source = zip_ref.open(file_info)
+                    target_path = extract_dir / filename
+                    with open(target_path, 'wb') as target:
+                        shutil.copyfileobj(source, target)
     
     def get_corpus_path(self, corpus_id: str) -> Path:
         """Obtener ruta del corpus"""

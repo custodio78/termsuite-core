@@ -157,8 +157,8 @@ async def get_tmx_languages(tmx_id: str):
 
 
 @app.post("/api/extract-tmx-language")
-async def extract_tmx_language(tmx_id: str, language: str):
-    """Extraer términos de un TMX para un idioma específico"""
+async def extract_tmx_language(tmx_id: str, language: str, target_language: Optional[str] = None):
+    """Extraer términos de un TMX para un idioma específico con traducción opcional"""
     # Buscar archivo TMX
     tmx_dir = file_handler.uploads_dir / 'tmx'
     tmx_file_path = None
@@ -185,15 +185,25 @@ async def extract_tmx_language(tmx_id: str, language: str):
             "total": len(terms),
             "total_occurrences": sum(terms_freq.values())
         }
+        
+        # Si se especifica idioma destino, guardarlo también
+        if target_language:
+            terms_data["target_language"] = target_language
+        
         terms_path = file_handler.get_path("tmx", f"{tmx_id}_terms.json")
         with open(terms_path, 'w', encoding='utf-8') as f:
             json.dump(terms_data, f, ensure_ascii=False, indent=2)
         
+        msg = f"{len(terms)} términos del idioma '{language}' extraídos"
+        if target_language:
+            msg += f" (traducción: {target_language})"
+        
         return {
             "success": True,
             "language": language,
+            "target_language": target_language,
             "total_terms": len(terms),
-            "message": f"{len(terms)} términos del idioma '{language}' extraídos"
+            "message": msg
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error: {str(e)}")
@@ -432,8 +442,15 @@ async def export_tmx_to_excel(
         
         if tmx_file_path and tmx_file_path.exists():
             try:
+                # Obtener idioma destino si fue configurado
+                target_lang = tmx_data.get('target_language') if isinstance(tmx_data, dict) else None
+                
                 # Pasar el idioma para identificar correctamente source y target
-                translations = tmx_parser.parse_with_translations(str(tmx_file_path), source_lang=language)
+                translations = tmx_parser.parse_with_translations(
+                    str(tmx_file_path), 
+                    source_lang=language,
+                    target_lang=target_lang
+                )
                 
                 # Crear diccionario de traducciones exactas
                 trans_dict_exact = {}

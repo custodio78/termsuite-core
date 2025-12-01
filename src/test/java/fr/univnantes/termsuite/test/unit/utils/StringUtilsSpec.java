@@ -22,31 +22,30 @@
 package fr.univnantes.termsuite.test.unit.utils;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import fr.univnantes.termsuite.utils.StringUtils;
 
 public class StringUtilsSpec {
-	
-	@Before
+
+	@BeforeEach
 	public void setUp() {
 	}
-	
+
 	@Test
 	public void testToOnelineSentences() {
 		assertThat(StringUtils.toOnelineSentences("Bonjour tout le monde."))
-			.isEqualTo("Bonjour tout le monde.");
+				.isEqualTo("Bonjour tout le monde.");
 
 		assertThat(StringUtils.toOnelineSentences("Bonjour\ntout le monde."))
-		.isEqualTo("Bonjour\ntout le monde.");
+				.isEqualTo("Bonjour\ntout le monde.");
 		assertThat(StringUtils.toOnelineSentences("Bonjour\n\n  \ntout le monde."))
-		.isEqualTo("Bonjour\ntout le monde.");
+				.isEqualTo("Bonjour\ntout le monde.");
 
 	}
-
 
 	@Test
 	public void nbDigitSequences() {
@@ -55,23 +54,23 @@ public class StringUtilsSpec {
 		assertEquals(1, StringUtils.nbDigitSequences("er232gqsdrgsqergeq"));
 		assertEquals(2, StringUtils.nbDigitSequences("er232gqsdrg2sqergeq"));
 	}
-	
+
 	@Test
 	public void getOrthographicScore() {
 		assertEquals(1d, StringUtils.getOrthographicScore("eqergeq"), 0.00001);
-		assertEquals(1d/1.8, StringUtils.getOrthographicScore("123eqergeq"), 0.00001);
-		assertEquals(1d/1.8, StringUtils.getOrthographicScore("eqergeq456"), 0.00001);
+		assertEquals(1d / 1.8, StringUtils.getOrthographicScore("123eqergeq"), 0.00001);
+		assertEquals(1d / 1.8, StringUtils.getOrthographicScore("eqergeq456"), 0.00001);
 		assertEquals(0.85, StringUtils.getOrthographicScore("3eqergeq"), 0.00001);
 		assertEquals(0.85, StringUtils.getOrthographicScore("eqergeq4"), 0.00001);
-		assertEquals(1d/1.8, StringUtils.getOrthographicScore("eq2ergeq"), 0.00001);
-		assertEquals(1d/1.8, StringUtils.getOrthographicScore("eq25ergeq"), 0.00001);
-		assertEquals(1d/(1.8*1.8), StringUtils.getOrthographicScore("eq25erge2q"), 0.00001);
-		assertEquals(0.70d/(1.8), StringUtils.getOrthographicScore("e25"), 0.00001);
-		assertEquals(0.70d/1.8, StringUtils.getOrthographicScore("e2a"), 0.00001);
-		assertEquals(0.95d/1.8/2, StringUtils.getOrthographicScore("e2a*"), 0.00001);
+		assertEquals(1d / 1.8, StringUtils.getOrthographicScore("eq2ergeq"), 0.00001);
+		assertEquals(1d / 1.8, StringUtils.getOrthographicScore("eq25ergeq"), 0.00001);
+		assertEquals(1d / (1.8 * 1.8), StringUtils.getOrthographicScore("eq25erge2q"), 0.00001);
+		assertEquals(0.70d / (1.8), StringUtils.getOrthographicScore("e25"), 0.00001);
+		assertEquals(0.70d / 1.8, StringUtils.getOrthographicScore("e2a"), 0.00001);
+		assertEquals(0.95d / 1.8 / 2, StringUtils.getOrthographicScore("e2a*"), 0.00001);
 
 	}
-	
+
 	@Test
 	public void nbDigits() {
 		assertEquals(0, StringUtils.nbDigits("eqergeq"));
@@ -79,6 +78,5 @@ public class StringUtilsSpec {
 		assertEquals(2, StringUtils.nbDigits("eq34ergeq"));
 		assertEquals(2, StringUtils.nbDigits("eqe2rg4eq"));
 	}
-
 
 }

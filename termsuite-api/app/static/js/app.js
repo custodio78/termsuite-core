@@ -126,8 +126,12 @@ async function loadTMXLanguages(tmxId) {
         const data = await response.json();
         
         if (response.ok && data.available_languages) {
-            const select = document.getElementById('tmx-language-select');
-            select.innerHTML = '';
+            const sourceSelect = document.getElementById('tmx-language-select');
+            const targetSelect = document.getElementById('tmx-target-language-select');
+            const targetContainer = document.getElementById('tmx-target-language-container');
+            
+            sourceSelect.innerHTML = '';
+            targetSelect.innerHTML = '';
             
             // Mapeo de códigos a nombres
             const langNames = {
@@ -142,14 +146,36 @@ async function loadTMXLanguages(tmxId) {
                 'gl': 'Galego'
             };
             
+            // Llenar selector de idioma origen
             data.available_languages.forEach(lang => {
                 const option = document.createElement('option');
                 option.value = lang;
                 option.textContent = `${langNames[lang] || lang.toUpperCase()} (${lang})`;
-                select.appendChild(option);
+                sourceSelect.appendChild(option);
             });
             
-            showToast(`Idiomas detectados: ${data.available_languages.join(', ')}`, 'info');
+            // Si hay más de un idioma, mostrar selector de idioma destino
+            if (data.available_languages.length > 1) {
+                targetContainer.style.display = 'block';
+                
+                // Llenar selector de idioma destino
+                data.available_languages.forEach(lang => {
+                    const option = document.createElement('option');
+                    option.value = lang;
+                    option.textContent = `${langNames[lang] || lang.toUpperCase()} (${lang})`;
+                    targetSelect.appendChild(option);
+                });
+                
+                // Seleccionar automáticamente el segundo idioma como destino
+                if (data.available_languages.length >= 2) {
+                    targetSelect.value = data.available_languages[1];
+                }
+                
+                showToast(`TMX multiidioma detectado: ${data.available_languages.join(', ')}`, 'info');
+            } else {
+                targetContainer.style.display = 'none';
+                showToast(`Idioma detectado: ${data.available_languages.join(', ')}`, 'info');
+            }
         }
     } catch (error) {
         console.error('Error al cargar idiomas:', error);
@@ -158,17 +184,36 @@ async function loadTMXLanguages(tmxId) {
 
 // Seleccionar idioma del TMX y extraer términos
 async function selectTMXLanguage() {
-    const language = document.getElementById('tmx-language-select').value;
+    const sourceLanguage = document.getElementById('tmx-language-select').value;
+    const targetLanguage = document.getElementById('tmx-target-language-select').value;
+    const targetContainer = document.getElementById('tmx-target-language-container');
     
-    if (!language) {
-        showToast('Selecciona un idioma', 'warning');
+    if (!sourceLanguage) {
+        showToast('Selecciona un idioma origen', 'warning');
         return;
     }
     
-    showToast(`Extrayendo términos en ${language}...`, 'info');
+    // Validar que los idiomas sean diferentes si hay selector de destino visible
+    if (targetContainer.style.display !== 'none' && sourceLanguage === targetLanguage) {
+        showToast('Los idiomas origen y destino deben ser diferentes', 'warning');
+        return;
+    }
+    
+    const langMsg = targetContainer.style.display !== 'none' 
+        ? `${sourceLanguage} → ${targetLanguage}` 
+        : sourceLanguage;
+    
+    showToast(`Extrayendo términos: ${langMsg}...`, 'info');
     
     try {
-        const response = await fetch(`${API_BASE}/api/extract-tmx-language?tmx_id=${state.tmxId}&language=${language}`, {
+        let url = `${API_BASE}/api/extract-tmx-language?tmx_id=${state.tmxId}&language=${sourceLanguage}`;
+        
+        // Agregar idioma destino si está visible
+        if (targetContainer.style.display !== 'none') {
+            url += `&target_language=${targetLanguage}`;
+        }
+        
+        const response = await fetch(url, {
             method: 'POST'
         });
         
@@ -177,6 +222,12 @@ async function selectTMXLanguage() {
         if (response.ok) {
             showToast(data.message, 'success');
             updateStats('tmx', data.message);
+            
+            // Actualizar etiqueta de traducción si hay idioma destino
+            if (targetContainer.style.display !== 'none') {
+                const translationLabel = document.getElementById('tmx-translation-label');
+                translationLabel.textContent = `Incluir traducciones (${sourceLanguage} → ${targetLanguage})`;
+            }
         } else {
             showToast(`Error: ${data.detail}`, 'error');
         }
@@ -360,16 +411,26 @@ async function pollJobStatus() {
 
 // Get Extraction Config
 function getExtractionConfig() {
+    const languageElement = document.getElementById('extract-language');
+    const minFreqElement = document.getElementById('min-frequency');
+    const topNElement = document.getElementById('top-n');
+    const minWordsElement = document.getElementById('min-words');
+    const maxWordsElement = document.getElementById('max-words');
+    const sortByElement = document.getElementById('sort-by');
+    const formatElement = document.getElementById('format');
+    const includeTransElement = document.getElementById('include-translation');
+    const excludeNumElement = document.getElementById('exclude-numbers');
+    
     return {
-        language: document.getElementById('extract-language').value,
-        minFrequency: parseInt(document.getElementById('min-frequency').value) || null,
-        topN: parseInt(document.getElementById('top-n').value) || null,
-        minWords: parseInt(document.getElementById('min-words').value) || null,
-        maxWords: parseInt(document.getElementById('max-words').value) || null,
-        sortBy: document.getElementById('sort-by').value,
-        format: document.getElementById('format').value,
-        includeTranslation: document.getElementById('include-translation').checked,
-        excludeNumbers: document.getElementById('exclude-numbers').checked
+        language: languageElement ? languageElement.value : 'es',
+        minFrequency: minFreqElement ? (parseInt(minFreqElement.value) || null) : null,
+        topN: topNElement ? (parseInt(topNElement.value) || null) : null,
+        minWords: minWordsElement ? (parseInt(minWordsElement.value) || null) : null,
+        maxWords: maxWordsElement ? (parseInt(maxWordsElement.value) || null) : null,
+        sortBy: sortByElement ? sortByElement.value : 'frequency',
+        format: formatElement ? formatElement.value : 'excel',
+        includeTranslation: includeTransElement ? includeTransElement.checked : false,
+        excludeNumbers: excludeNumElement ? excludeNumElement.checked : false
     };
 }
 

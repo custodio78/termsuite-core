@@ -1,10 +1,13 @@
-FROM python:3.9-slim
+FROM python:3.11-slim-bookworm
 
-# Instalar Java (necesario para TermSuite)
+# Instalar Java 17 (necesario para TermSuite)
 RUN apt-get update && apt-get install -y \
-    openjdk-21-jre-headless \
+    openjdk-17-jre-headless \
     wget \
     && rm -rf /var/lib/apt/lists/*
+
+# Configurar variables de entorno de Java para compatibilidad con TermSuite
+ENV JAVA_TOOL_OPTIONS="--add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.security=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED"
 
 # Crear directorios de trabajo
 WORKDIR /app

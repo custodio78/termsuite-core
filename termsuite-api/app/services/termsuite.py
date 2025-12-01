@@ -1,5 +1,6 @@
 import subprocess
 import os
+import shlex
 from pathlib import Path
 
 
@@ -11,6 +12,7 @@ class TermSuiteService:
             'TERMSUITE_JAR', 
             '/app/termsuite/termsuite-core-3.0.10.jar'
         )
+        # Opciones de memoria para Java (los permisos de módulos se configuran en JAVA_TOOL_OPTIONS)
         self.java_opts = os.getenv('JAVA_OPTS', '-Xms1g -Xmx4g')
     
     def extract_terms(
@@ -34,18 +36,34 @@ class TermSuiteService:
                 f"TermSuite JAR no encontrado en: {self.jar_path}"
             )
         
+        # Verificar que el corpus existe
+        corpus_path_obj = Path(corpus_path)
+        if not corpus_path_obj.exists():
+            raise FileNotFoundError(f"Corpus no encontrado en: {corpus_path}")
+        
+        # Verificar que hay archivos .txt en el corpus
+        if corpus_path_obj.is_dir():
+            txt_files = list(corpus_path_obj.glob('*.txt'))
+            if not txt_files:
+                raise FileNotFoundError(f"No se encontraron archivos .txt en: {corpus_path}")
+            print(f"DEBUG: Encontrados {len(txt_files)} archivos .txt en el corpus")
+        
         # Construir comando
+        # TermSuite requiere --from-text-corpus con encoding para corpus de texto plano
         cmd = [
             'java',
-            *self.java_opts.split(),
+            *shlex.split(self.java_opts),
             '-jar', self.jar_path,
-            '-c', corpus_path,
+            '--from-text-corpus', str(corpus_path),
+            '--encoding', 'UTF-8',
             '-l', language,
-            '--json', output_path,
+            '--json', str(output_path),
             '--post-filter-property', 'freq',
             '--post-filter-th', str(min_frequency),
             '--info'
         ]
+        
+        print(f"DEBUG: Ejecutando comando: {' '.join(cmd)}")
         
         # Ejecutar
         try:
