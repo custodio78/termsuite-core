@@ -22,15 +22,16 @@ class TMXParser:
             return term
         
         # Eliminar bullets y marcadores al inicio
-        # Patrones: a), b), 1., 2., 1-, 2-, -, •, *, etc.
+        # IMPORTANTE: Solo eliminar si hay espacio después del marcador
+        # Esto evita eliminar letras válidas como "c)" en "coupling"
         patterns = [
-            r'^\s*[a-z]\)\s*',           # a), b), c)
-            r'^\s*[A-Z]\)\s*',           # A), B), C)
-            r'^\s*\d+\.\s*',             # 1., 2., 3.
-            r'^\s*\d+\)\s*',             # 1), 2), 3)
-            r'^\s*\d+-\s*',              # 1-, 2-, 3-
-            r'^\s*[-•*▪▫■□●○]\s+',       # -, •, *, etc.
-            r'^\s*[·]\s+',               # ·
+            r'^\s*[a-z]\)\s+',           # a) , b) , c) (con espacio después)
+            r'^\s*[A-Z]\)\s+',           # A) , B) , C) (con espacio después)
+            r'^\s*\d+\.\s+',             # 1. , 2. , 3. (con espacio después)
+            r'^\s*\d+\)\s+',             # 1) , 2) , 3) (con espacio después)
+            r'^\s*\d+-\s+',              # 1- , 2- , 3- (con espacio después)
+            r'^\s*[-•*▪▫■□●○]\s+',       # -, •, *, etc. (con espacio después)
+            r'^\s*[·]\s+',               # · (con espacio después)
         ]
         
         cleaned = term

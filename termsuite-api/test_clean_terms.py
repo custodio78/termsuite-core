@@ -13,6 +13,7 @@ parser = TMXParser()
 
 # Casos de prueba
 test_cases = [
+    # Bullets con espacio - deben eliminarse
     ("a) elevador", "elevador"),
     ("b) sistema hidráulico", "sistema hidráulico"),
     ("1. plataforma", "plataforma"),
@@ -26,7 +27,13 @@ test_cases = [
     ("A) Componente", "Componente"),
     ("3) tornillo", "tornillo"),
     ("  a)  espacio extra  ", "espacio extra"),
+    
+    # Términos válidos que NO deben modificarse
+    ("coupling", "coupling"),
+    ("c)oupling", "c)oupling"),  # Sin espacio después de c)
     ("normal sin bullet", "normal sin bullet"),
+    ("c-clamp", "c-clamp"),
+    ("a-frame", "a-frame"),
     ("", ""),
 ]
 
