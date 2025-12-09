@@ -1,0 +1,95 @@
+---
+title: problème d'installation de TermSuite en local
+author: Damien Belvèze
+date: 20250225
+---
+
+Tentative d'installation en local ([l'installation avec Docker ayant échoué](https://api.istex.fr/document/?q=(title:%22wikipedia%22%20AND%20title:%22gender%22)&size=10&output=*&facet=corpusName&defaultOperator=OR&from=0), le build de l'image docker a généré une erreur)
+
+
+# version de Java installée en local : 
+
+openjdk 21.0.6 2025-01-21
+OpenJDK Runtime Environment (build 21.0.6+7-Ubuntu-124.04.1)
+OpenJDK 64-Bit Server VM (build 21.0.6+7-Ubuntu-124.04.1, mixed mode, sharing)
+
+# corpus : 
+
+requête dans Istex.fr : wikipedia AND gender : 67 résultats. 
+Fichiers textes des résultats extraits dans le dossier corpus
+
+treetagger semble avoir été correctement installé (test hello world réussi)
+
+
+# disposition du répertoire
+
+identique à celle du repo
+
+# Commande : 
+
+$ java -cp termsuite-core-3.0.10.jar fr.univnantes.termsuite.tools.TerminologyExtractorCLI \
+  -t ./treetagger/ \
+  -c ./corpus/ \
+  -l en \
+  --tsv ./corpus.tsv
+
+# Message d'erreur : 
+
+java -cp termsuite-core-3.0.10.jar fr.univnantes.termsuite.tools.TerminologyExtractorCLI \
+  -t ./treetagger/ \
+  -c ./corpus/ \
+  -l en \
+  --tsv ./corpus.tsv
+Exception in thread "main" com.google.common.util.concurrent.ExecutionError: java.lang.ExceptionInInitializerError
+	at com.google.common.cache.LocalCache$Segment.get(LocalCache.java:2215)
+	at com.google.common.cache.LocalCache.get(LocalCache.java:4154)
+	at com.google.common.cache.LocalCache.getOrLoad(LocalCache.java:4158)
+	at com.google.common.cache.LocalCache$LocalLoadingCache.get(LocalCache.java:5147)
+	at com.google.common.cache.LocalCache$LocalLoadingCache.getUnchecked(LocalCache.java:5153)
+	at com.google.inject.internal.FailableCache.get(FailableCache.java:48)
+	at com.google.inject.internal.ConstructorInjectorStore.get(ConstructorInjectorStore.java:50)
+	at com.google.inject.internal.ConstructorBindingImpl.initialize(ConstructorBindingImpl.java:138)
+	at com.google.inject.internal.InjectorImpl.initializeBinding(InjectorImpl.java:536)
+	at com.google.inject.internal.AbstractBindingProcessor$Processor$1.run(AbstractBindingProcessor.java:160)
+	at com.google.inject.internal.ProcessedBindingData.initializeBindings(ProcessedBindingData.java:44)
+	at com.google.inject.internal.InternalInjectorCreator.initializeStatically(InternalInjectorCreator.java:123)
+	at com.google.inject.internal.InternalInjectorCreator.build(InternalInjectorCreator.java:107)
+	at com.google.inject.Guice.createInjector(Guice.java:99)
+	at com.google.inject.Guice.createInjector(Guice.java:73)
+	at com.google.inject.Guice.createInjector(Guice.java:62)
+	at fr.univnantes.termsuite.api.TermSuite.termSuiteInjector(TermSuite.java:118)
+	at fr.univnantes.termsuite.api.TermSuite.getLanguageService(TermSuite.java:47)
+	at fr.univnantes.termsuite.api.TermSuite.getDefaultExtractorConfig(TermSuite.java:43)
+	at fr.univnantes.termsuite.tools.opt.ClientHelper.getExtractorOptions(ClientHelper.java:146)
+	at fr.univnantes.termsuite.tools.TerminologyExtractorCLI.run(TerminologyExtractorCLI.java:129)
+	at fr.univnantes.termsuite.tools.CommandLineClient.launch(CommandLineClient.java:287)
+	at fr.univnantes.termsuite.tools.TerminologyExtractorCLI.main(TerminologyExtractorCLI.java:203)
+Caused by: java.lang.ExceptionInInitializerError
+	at com.google.inject.internal.cglib.reflect.$FastClass$Generator.getProtectionDomain(FastClass.java:73)
+	at com.google.inject.internal.cglib.core.$AbstractClassGenerator.create(AbstractClassGenerator.java:206)
+	at com.google.inject.internal.cglib.reflect.$FastClass$Generator.create(FastClass.java:65)
+	at com.google.inject.internal.BytecodeGen.newFastClassForMember(BytecodeGen.java:252)
+	at com.google.inject.internal.BytecodeGen.newFastClassForMember(BytecodeGen.java:203)
+	at com.google.inject.internal.DefaultConstructionProxyFactory.create(DefaultConstructionProxyFactory.java:53)
+	at com.google.inject.internal.ProxyFactory.create(ProxyFactory.java:158)
+	at com.google.inject.internal.ConstructorInjectorStore.createConstructor(ConstructorInjectorStore.java:90)
+	at com.google.inject.internal.ConstructorInjectorStore.access$000(ConstructorInjectorStore.java:29)
+	at com.google.inject.internal.ConstructorInjectorStore$1.create(ConstructorInjectorStore.java:37)
+	at com.google.inject.internal.ConstructorInjectorStore$1.create(ConstructorInjectorStore.java:33)
+	at com.google.inject.internal.FailableCache$1.load(FailableCache.java:37)
+	at com.google.common.cache.LocalCache$LoadingValueReference.loadFuture(LocalCache.java:3716)
+	at com.google.common.cache.LocalCache$Segment.loadSync(LocalCache.java:2424)
+	at com.google.common.cache.LocalCache$Segment.lockedGetOrLoad(LocalCache.java:2298)
+	at com.google.common.cache.LocalCache$Segment.get(LocalCache.java:2211)
+	... 22 more
+Caused by: java.lang.reflect.InaccessibleObjectException: Unable to make protected final java.lang.Class java.lang.ClassLoader.defineClass(java.lang.String,byte[],int,int,java.security.ProtectionDomain) throws java.lang.ClassFormatError accessible: module java.base does not "opens java.lang" to unnamed module @6a396c1e
+	at java.base/java.lang.reflect.AccessibleObject.throwInaccessibleObjectException(AccessibleObject.java:391)
+	at java.base/java.lang.reflect.AccessibleObject.checkCanSetAccessible(AccessibleObject.java:367)
+	at java.base/java.lang.reflect.AccessibleObject.checkCanSetAccessible(AccessibleObject.java:315)
+	at java.base/java.lang.reflect.Method.checkCanSetAccessible(Method.java:203)
+	at java.base/java.lang.reflect.Method.setAccessible(Method.java:197)
+	at com.google.inject.internal.cglib.core.$ReflectUtils$1.run(ReflectUtils.java:52)
+	at java.base/java.security.AccessController.doPrivileged(AccessController.java:319)
+	at com.google.inject.internal.cglib.core.$ReflectUtils.<clinit>(ReflectUtils.java:42)
+	... 38 more
+

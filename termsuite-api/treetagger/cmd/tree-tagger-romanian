@@ -1,0 +1,18 @@
+#!/bin/sh
+
+# Set these paths appropriately
+
+BIN="/home/dbelveze/Bureau/TERMSUITE_WORKSPACE/bin"
+CMD="/home/dbelveze/Bureau/TERMSUITE_WORKSPACE/cmd"
+LIB="/home/dbelveze/Bureau/TERMSUITE_WORKSPACE/lib"
+
+OPTIONS="-token -lemma -sgml"
+
+TOKENIZER=${CMD}/utf8-tokenize.perl
+ABBR_LIST=${LIB}/romanian-abbreviations
+TAGGER=${BIN}/tree-tagger
+PARFILE=${LIB}/romanian.par
+
+$TOKENIZER -r -a $ABBR_LIST $* |
+${CMD}/split-romanian.perl ${LIB}/romanian-tokens |
+$TAGGER $OPTIONS $PARFILE

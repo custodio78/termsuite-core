@@ -1,0 +1,18 @@
+#!/bin/sh
+
+# Set these paths appropriately
+
+BIN="/home/dbelveze/Bureau/TERMSUITE_WORKSPACE/bin"
+CMD="/home/dbelveze/Bureau/TERMSUITE_WORKSPACE/cmd"
+LIB="/home/dbelveze/Bureau/TERMSUITE_WORKSPACE/lib"
+
+OPTIONS="-token -lemma -sgml -pt-with-lemma"
+
+TOKENIZER=${CMD}/utf8-tokenize.perl
+ABBR_LIST=${LIB}/german-abbreviations
+TAGGER=${BIN}/tree-tagger
+PARFILE=${LIB}/german-spoken.par
+
+$TOKENIZER -a $ABBR_LIST $* |
+# tagging
+$TAGGER $OPTIONS $PARFILE

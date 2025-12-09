@@ -9,8 +9,10 @@ services:
     volumes:
       - ./data:/app/data
       - ./termsuite:/app/termsuite
+      - ./treetagger:/app/treetagger
     environment:
       - TERMSUITE_JAR=/app/termsuite/termsuite-core-3.0.10.jar
+      - TREETAGGER_HOME=/app/treetagger
       - DATA_DIR=/app/data
       - JAVA_OPTS=-Xms1g -Xmx4g
     restart: unless-stopped

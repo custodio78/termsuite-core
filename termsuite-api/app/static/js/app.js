@@ -660,6 +660,31 @@ function getLangName(code) {
     return langNames[code] || code.toUpperCase();
 }
 
+// Función para seleccionar modo
+function selectMode(mode) {
+    // Ocultar el selector de modo
+    document.getElementById('mode-selector').style.display = 'none';
+    
+    // Ocultar ambas secciones
+    document.getElementById('tmx-section').style.display = 'none';
+    document.getElementById('corpus-section').style.display = 'none';
+    
+    // Mostrar la sección seleccionada
+    if (mode === 'tmx') {
+        document.getElementById('tmx-section').style.display = 'block';
+        showToast('Modo: Memoria TMX seleccionado', 'info');
+    } else if (mode === 'corpus') {
+        document.getElementById('corpus-section').style.display = 'block';
+        showToast('Modo: Corpus Monolingüe seleccionado', 'info');
+    }
+    
+    // Scroll suave a la sección
+    setTimeout(() => {
+        const section = document.getElementById(mode + '-section');
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+}
+
 // Show Toast
 function showToast(message, type = 'info') {
     const toast = document.getElementById('toast');

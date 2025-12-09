@@ -1,6 +1,6 @@
-# TermSuite API
+# LinguaTerms
 
-API REST para extracción terminológica usando TermSuite con soporte para memorias TMX y exportación a Excel.
+Extracción inteligente de términos técnicos con soporte para memorias TMX y corpus monolingües.
 
 ## 🚀 Inicio Rápido
 

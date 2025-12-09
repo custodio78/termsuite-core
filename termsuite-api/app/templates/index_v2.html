@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LinguaTerms - Extractor de Términos</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/style_v2.css">
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- Header -->
+        <header class="py-4 mb-4 border-bottom">
+            <div class="container">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div class="d-flex align-items-center">
+                        <div class="logo-container me-3">
+                            <span class="logo-lingua">Lingua</span><span class="logo-terms">Terms</span>
+                        </div>
+                        <div class="border-start ps-3">
+                            <p class="text-muted small mb-0">Extracción inteligente de términos técnicos</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="container">
+            <!-- Stepper -->
+            <div class="stepper mb-5">
+                <div class="step active" id="step-indicator-1">
+                    <div class="step-number">1</div>
+                    <div class="step-label">Subir TMX</div>
+                </div>
+                <div class="step-line"></div>
+                <div class="step" id="step-indicator-2">
+                    <div class="step-number">2</div>
+                    <div class="step-label">Configurar</div>
+                </div>
+                <div class="step-line"></div>
+                <div class="step" id="step-indicator-3">
+                    <div class="step-number">3</div>
+                    <div class="step-label">Descargar</div>
+                </div>
+            </div>
+
+            <!-- Step 1: Upload -->
+            <div class="step-content active" id="step-1">
+                <div class="text-center mb-4">
+                    <h2 class="h4">Sube tu memoria de traducción</h2>
+                    <p class="text-muted">Arrastra tu archivo TMX o haz clic para seleccionarlo</p>
+                </div>
+
+                <div class="upload-zone" id="upload-zone">
+                    <input type="file" id="tmx-file-input" accept=".tmx,.txt,.zip" hidden>
+                    <div class="upload-content">
+                        <i class="fas fa-cloud-upload-alt fa-4x text-primary mb-3"></i>
+                        <h3 class="h5">Arrastra tu archivo aquí</h3>
+                        <p class="text-muted mb-3">o haz clic para seleccionar</p>
+                        <button class="btn btn-primary btn-lg" onclick="document.getElementById('tmx-file-input').click()">
+                            <i class="fas fa-folder-open me-2"></i>Seleccionar archivo
+                        </button>
+                        <p class="text-muted small mt-3">
+                            <strong>Memoria TMX:</strong> .tmx (bilingüe/multilingüe)<br>
+                            <strong>Corpus:</strong> .txt o .zip (monolingüe)
+                        </p>
+                    </div>
+                </div>
+
+                <!-- File Preview -->
+                <div class="file-preview mt-4" id="file-preview" style="display: none;">
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="row align-items-center">
+                                <div class="col-auto">
+                                    <i class="fas fa-file-alt fa-3x text-success"></i>
+                                </div>
+                                <div class="col">
+                                    <h5 class="mb-1" id="file-name"></h5>
+                                    <p class="text-muted mb-0" id="file-info"></p>
+                                </div>
+                                <div class="col-auto">
+                                    <button class="btn btn-outline-danger btn-sm" onclick="removeFile()">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="mt-3" id="upload-progress" style="display: none;">
+                                <div class="d-flex justify-content-between mb-1">
+                                    <span class="small">Analizando archivo...</span>
+                                    <span class="small" id="upload-percent">0%</span>
+                                </div>
+                                <div class="progress">
+                                    <div class="progress-bar progress-bar-striped progress-bar-animated" id="upload-progress-bar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div class="mt-3" id="file-analysis" style="display: none;">
+                                <div class="alert alert-success mb-0">
+                                    <i class="fas fa-check-circle me-2"></i>
+                                    <strong>Archivo analizado correctamente</strong>
+                                    <div class="mt-2" id="detected-languages"></div>
+                                </div>
+                                <button class="btn btn-primary btn-lg w-100 mt-3" onclick="goToStep(2)">
+                                    Continuar <i class="fas fa-arrow-right ms-2"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2: Configure -->
+            <div class="step-content" id="step-2">
+                <div class="text-center mb-4">
+                    <h2 class="h4">Configura la extracción</h2>
+                    <p class="text-muted">Selecciona los idiomas y ajusta los parámetros</p>
+                </div>
+
+                <div class="row">
+                    <div class="col-lg-8 mx-auto">
+                        <!-- Language Selection -->
+                        <div class="card mb-4">
+                            <div class="card-header bg-primary text-white">
+                                <h5 class="mb-0"><i class="fas fa-globe me-2"></i>Selección de Idiomas</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label fw-bold">Idioma origen (términos a extraer)</label>
+                                        <select id="source-language" class="form-select form-select-lg">
+                                            <!-- Se llenará dinámicamente -->
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6 mb-3" id="target-language-container">
+                                        <label class="form-label fw-bold">Idioma de traducción</label>
+                                        <select id="target-language" class="form-select form-select-lg">
+                                            <!-- Se llenará dinámicamente -->
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="include-translations" checked>
+                                    <label class="form-check-label" for="include-translations">
+                                        Incluir traducciones en el resultado
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Quick Config -->
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h5 class="mb-0"><i class="fas fa-sliders-h me-2"></i>Configuración Rápida</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="config-preset active" data-preset="standard" onclick="selectPreset('standard')">
+                                    <div class="preset-radio"></div>
+                                    <div>
+                                        <div class="fw-bold">Estándar (Recomendado)</div>
+                                        <small class="text-muted">Frecuencia ≥ 2, términos de 1-5 palabras</small>
+                                    </div>
+                                </div>
+                                <div class="config-preset" data-preset="exhaustive" onclick="selectPreset('exhaustive')">
+                                    <div class="preset-radio"></div>
+                                    <div>
+                                        <div class="fw-bold">Exhaustivo</div>
+                                        <small class="text-muted">Frecuencia ≥ 1, incluye términos poco frecuentes</small>
+                                    </div>
+                                </div>
+                                <div class="config-preset" data-preset="selective" onclick="selectPreset('selective')">
+                                    <div class="preset-radio"></div>
+                                    <div>
+                                        <div class="fw-bold">Selectivo</div>
+                                        <small class="text-muted">Frecuencia ≥ 5, solo términos muy frecuentes</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Advanced Options (Collapsed) -->
+                        <div class="card mb-4">
+                            <div class="card-header" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#advanced-options">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-cog me-2"></i>Opciones Avanzadas
+                                    <i class="fas fa-chevron-down float-end"></i>
+                                </h5>
+                            </div>
+                            <div class="collapse" id="advanced-options">
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label class="form-label">Frecuencia mínima: <span id="freq-value">2</span></label>
+                                        <input type="range" class="form-range" id="min-frequency" min="1" max="10" value="2" oninput="updateFreqValue(this.value)">
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Palabras mínimas</label>
+                                            <input type="number" class="form-control" id="min-words" value="1" min="1">
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Palabras máximas</label>
+                                            <input type="number" class="form-control" id="max-words" value="5" min="1">
+                                        </div>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="exclude-numbers">
+                                        <label class="form-check-label" for="exclude-numbers">
+                                            Excluir términos con números
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-outline-secondary btn-lg" onclick="goToStep(1)">
+                                <i class="fas fa-arrow-left me-2"></i>Atrás
+                            </button>
+                            <button class="btn btn-primary btn-lg flex-grow-1" onclick="startExtraction()">
+                                <i class="fas fa-magic me-2"></i>Extraer Términos
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: Results -->
+            <div class="step-content" id="step-3">
+                <!-- Processing -->
+                <div id="processing-view">
+                    <div class="text-center mb-4">
+                        <div class="spinner-border text-primary mb-3" style="width: 4rem; height: 4rem;"></div>
+                        <h2 class="h4">Procesando términos</h2>
+                        <p class="text-muted">Esto puede tardar 30-60 segundos dependiendo del tamaño del archivo</p>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="processing-steps">
+                                <div class="processing-step completed">
+                                    <i class="fas fa-check-circle"></i>
+                                    <span>Archivo cargado</span>
+                                </div>
+                                <div class="processing-step completed">
+                                    <i class="fas fa-check-circle"></i>
+                                    <span>Idiomas detectados</span>
+                                </div>
+                                <div class="processing-step active">
+                                    <div class="spinner-border spinner-border-sm"></div>
+                                    <span>Extrayendo términos técnicos</span>
+                                </div>
+                                <div class="processing-step">
+                                    <i class="far fa-circle"></i>
+                                    <span>Generando archivo Excel</span>
+                                </div>
+                            </div>
+
+                            <div class="progress mt-4" style="height: 30px;">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" id="extraction-progress-bar" style="width: 0%">
+                                    <span id="extraction-percent">0%</span>
+                                </div>
+                            </div>
+
+                            <p class="text-center text-muted mt-3 mb-0" id="extraction-status">Iniciando extracción...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Results -->
+                <div id="results-view" style="display: none;">
+                    <div class="text-center mb-4">
+                        <div class="success-icon mb-3">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        <h2 class="h4">¡Extracción completada!</h2>
+                        <p class="text-muted">Tu archivo está listo para descargar</p>
+                    </div>
+
+                    <div class="row mb-4">
+                        <div class="col-md-4">
+                            <div class="stat-card">
+                                <div class="stat-icon">
+                                    <i class="fas fa-list"></i>
+                                </div>
+                                <div class="stat-value" id="stat-unique-terms">0</div>
+                                <div class="stat-label">Términos únicos</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="stat-card">
+                                <div class="stat-icon">
+                                    <i class="fas fa-hashtag"></i>
+                                </div>
+                                <div class="stat-value" id="stat-total-occurrences">0</div>
+                                <div class="stat-label">Ocurrencias totales</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="stat-card">
+                                <div class="stat-icon">
+                                    <i class="fas fa-globe"></i>
+                                </div>
+                                <div class="stat-value" id="stat-languages">-</div>
+                                <div class="stat-label">Idiomas</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2 justify-content-center">
+                        <button class="btn btn-success btn-lg" onclick="downloadResults()">
+                            <i class="fas fa-download me-2"></i>Descargar Excel
+                        </button>
+                        <button class="btn btn-outline-primary btn-lg" onclick="resetWizard()">
+                            <i class="fas fa-redo me-2"></i>Procesar otro TMX
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/app_v2.js"></script>
+</body>
+</html>

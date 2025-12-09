@@ -357,3 +357,46 @@ body {
     color: #adb5bd;
     font-style: italic;
 }
+
+/* Selector de modo */
+.mode-card {
+    transition: all 0.3s ease;
+    border-width: 2px !important;
+}
+
+.mode-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+}
+
+.mode-card .card-body {
+    padding: 2rem;
+}
+
+.mode-card i {
+    transition: transform 0.3s ease;
+}
+
+.mode-card:hover i {
+    transform: scale(1.1);
+}
+
+.mode-card ul {
+    list-style: none;
+    padding-left: 0;
+}
+
+.mode-card ul li {
+    padding: 0.25rem 0;
+}
+
+.mode-card ul li:before {
+    content: "✓ ";
+    color: #28a745;
+    font-weight: bold;
+    margin-right: 0.5rem;
+}
+
+.mode-card.border-primary ul li:before {
+    color: #366092;
+}

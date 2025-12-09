@@ -1,0 +1,8 @@
+# Ignorar archivos de TreeTagger (deben descargarse manualmente)
+*.tar.gz
+*.par.gz
+*.par
+
+# Mantener solo la documentación
+!DOWNLOAD_LINKS.md
+!.gitignore

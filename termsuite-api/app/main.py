@@ -19,8 +19,8 @@ from app.services.excel_export import ExcelExporter
 from app.utils.file_handler import FileHandler
 
 app = FastAPI(
-    title="TermSuite API",
-    description="API REST para extracción terminológica con TermSuite",
+    title="LinguaTerms API",
+    description="API REST para extracción inteligente de términos técnicos",
     version="1.0.0"
 )
 
@@ -51,7 +51,12 @@ jobs: Dict[str, dict] = {}
 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
-    """Página principal con interfaz web"""
+    """Página principal con interfaz web mejorada"""
+    return templates.TemplateResponse("index_v2.html", {"request": request})
+
+@app.get("/classic", response_class=HTMLResponse)
+async def classic_interface(request: Request):
+    """Interfaz clásica (legacy)"""
     return templates.TemplateResponse("index.html", {"request": request})
 
 
@@ -59,7 +64,7 @@ async def root(request: Request):
 async def api_info():
     """Información de la API"""
     return {
-        "message": "TermSuite API",
+        "message": "LinguaTerms API",
         "version": "1.0.0",
         "endpoints": {
             "upload_tmx": "/api/upload-tmx",
@@ -258,16 +263,20 @@ async def extract_tmx_language(
             # Modo TermSuite: Extraer términos individuales de los segmentos
             segments = tmx_parser.parse(str(tmx_file_path), language=language)
             
-            # Crear archivo temporal con los segmentos
-            temp_corpus_path = file_handler.get_path("tmx", f"{tmx_id}_corpus_{language}.txt")
-            with open(temp_corpus_path, 'w', encoding='utf-8') as f:
+            # Crear directorio temporal para el corpus
+            temp_corpus_dir = file_handler.get_path("tmx", f"{tmx_id}_corpus_{language}")
+            temp_corpus_dir.mkdir(exist_ok=True)
+            
+            # Crear archivo de texto con los segmentos
+            temp_corpus_file = temp_corpus_dir / "segments.txt"
+            with open(temp_corpus_file, 'w', encoding='utf-8') as f:
                 for segment in segments:
                     f.write(segment + '\n')
             
             # Ejecutar TermSuite sobre los segmentos
             temp_output_path = file_handler.get_path("tmx", f"{tmx_id}_termsuite_{language}.json")
             termsuite_service.extract_terms(
-                corpus_path=str(temp_corpus_path),
+                corpus_path=str(temp_corpus_dir),
                 output_path=str(temp_output_path),
                 language=language,
                 min_frequency=1
@@ -290,7 +299,9 @@ async def extract_tmx_language(
                         terms_freq[term] = freq
             
             # Limpiar archivos temporales
-            temp_corpus_path.unlink(missing_ok=True)
+            import shutil
+            if temp_corpus_dir.exists():
+                shutil.rmtree(temp_corpus_dir)
             temp_output_path.unlink(missing_ok=True)
             
         else:
@@ -553,30 +564,47 @@ async def export_tmx_to_excel(
     
     # Incluir traducción si se solicita
     if include_translation:
-        # Buscar el archivo TMX original en uploads/tmx/
-        tmx_dir = file_handler.uploads_dir / 'tmx'
-        tmx_file_path = None
+        # Verificar si ya existe un archivo de traducciones en caché
+        translations_cache_path = file_handler.get_path("tmx", f"{tmx_id}_translations.json")
         
-        # Buscar archivo con el ID
-        if tmx_dir.exists():
-            for file in tmx_dir.glob(f"{tmx_id}*"):
-                if file.suffix == '.tmx':
-                    tmx_file_path = file
-                    break
+        if translations_cache_path.exists():
+            # Usar caché
+            with open(translations_cache_path, 'r', encoding='utf-8') as f:
+                translations = json.load(f)
+        else:
+            # Buscar el archivo TMX original en uploads/tmx/
+            tmx_dir = file_handler.uploads_dir / 'tmx'
+            tmx_file_path = None
+            
+            # Buscar archivo con el ID
+            if tmx_dir.exists():
+                for file in tmx_dir.glob(f"{tmx_id}*"):
+                    if file.suffix == '.tmx':
+                        tmx_file_path = file
+                        break
+            
+            if tmx_file_path and tmx_file_path.exists():
+                try:
+                    # Obtener idioma destino si fue configurado
+                    target_lang = tmx_data.get('target_language') if isinstance(tmx_data, dict) else None
+                    
+                    # Pasar el idioma para identificar correctamente source y target
+                    translations = tmx_parser.parse_with_translations(
+                        str(tmx_file_path), 
+                        source_lang=language,
+                        target_lang=target_lang
+                    )
+                    
+                    # Guardar en caché
+                    with open(translations_cache_path, 'w', encoding='utf-8') as f:
+                        json.dump(translations, f, ensure_ascii=False, indent=2)
+                except Exception as e:
+                    translations = []
+            else:
+                translations = []
         
-        if tmx_file_path and tmx_file_path.exists():
-            try:
-                # Obtener idioma destino si fue configurado
-                target_lang = tmx_data.get('target_language') if isinstance(tmx_data, dict) else None
-                
-                # Pasar el idioma para identificar correctamente source y target
-                translations = tmx_parser.parse_with_translations(
-                    str(tmx_file_path), 
-                    source_lang=language,
-                    target_lang=target_lang
-                )
-                
-                # Crear diccionario de traducciones exactas (con múltiples traducciones)
+        if translations:
+            # Crear diccionario de traducciones exactas (con múltiples traducciones)
                 from collections import defaultdict
                 trans_dict_exact = defaultdict(list)
                 # Crear lista de segmentos para búsqueda parcial
@@ -630,16 +658,6 @@ async def export_tmx_to_excel(
                             item['Traducción'] = ''
                             item['Tipo Match'] = 'No encontrado'
                             item['Variantes'] = 0
-                
-            except Exception as e:
-                # Si hay error al parsear traducciones, agregar columna vacía
-                for item in terms_for_excel:
-                    item['Traducción'] = f'Error: {str(e)}'
-                    item['Tipo Match'] = 'Error'
-        else:
-            # Si no se encuentra el archivo TMX, agregar columna vacía
-            for item in terms_for_excel:
-                item['Traducción'] = 'TMX no encontrado'
     
     # Seleccionar columnas si se especifica
     if columns:
