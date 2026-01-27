@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor Ollama - Tiempo Real</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #1a1a1a;
+            color: #ffffff;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .stat-card {
+            background: #2d2d2d;
+            padding: 15px;
+            border-radius: 8px;
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        
+        .controls {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 0 5px;
+        }
+        
+        .btn:hover {
+            background: #45a049;
+        }
+        
+        .btn.danger {
+            background: #f44336;
+        }
+        
+        .btn.danger:hover {
+            background: #da190b;
+        }
+        
+        .logs-container {
+            background: #2d2d2d;
+            border-radius: 8px;
+            padding: 20px;
+            height: 600px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 8px;
+            border-radius: 4px;
+            border-left: 4px solid #4CAF50;
+        }
+        
+        .log-entry.error {
+            border-left-color: #f44336;
+            background-color: rgba(244, 67, 54, 0.1);
+        }
+        
+        .log-entry.warning {
+            border-left-color: #ff9800;
+            background-color: rgba(255, 152, 0, 0.1);
+        }
+        
+        .log-entry.success {
+            border-left-color: #4CAF50;
+            background-color: rgba(76, 175, 80, 0.1);
+        }
+        
+        .log-entry.info {
+            border-left-color: #2196F3;
+            background-color: rgba(33, 150, 243, 0.1);
+        }
+        
+        .log-timestamp {
+            color: #888;
+            font-size: 12px;
+        }
+        
+        .log-term {
+            color: #FFD700;
+            font-weight: bold;
+        }
+        
+        .log-status {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        
+        .log-details {
+            color: #ccc;
+            margin-top: 4px;
+        }
+        
+        .log-prompt, .log-response {
+            background: #1a1a1a;
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: 'Courier New', monospace;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            border: 1px solid #444;
+            line-height: 1.4;
+        }
+        
+        .log-prompt {
+            border-left: 4px solid #2196F3;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        }
+        
+        .log-response {
+            border-left: 4px solid #4CAF50;
+            background: linear-gradient(135deg, #1a2e1a 0%, #213e16 100%);
+        }
+        
+        .prompt-label, .response-label {
+            font-weight: bold;
+            margin-bottom: 8px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            display: inline-block;
+        }
+        
+        .prompt-label {
+            background: #2196F3;
+            color: white;
+        }
+        
+        .response-label {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .expand-btn {
+            background: #444;
+            color: white;
+            border: none;
+            padding: 4px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            margin-left: 10px;
+            transition: background 0.2s;
+        }
+        
+        .expand-btn:hover {
+            background: #555;
+        }
+        
+        .expand-btn.expanded {
+            background: #666;
+        }
+        
+        .expandable-content {
+            display: none;
+        }
+        
+        .expandable-content.expanded {
+            display: block;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-online {
+            background-color: #4CAF50;
+        }
+        
+        .status-offline {
+            background-color: #f44336;
+        }
+        
+        .auto-scroll {
+            text-align: center;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 Monitor Ollama - Tiempo Real</h1>
+        <p>Monitoreo en vivo de las traducciones con Ollama</p>
+    </div>
+    
+    <div class="stats">
+        <div class="stat-card">
+            <div class="stat-number" id="total-logs">0</div>
+            <div>Total Logs</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="success-count">0</div>
+            <div>Traducciones Exitosas</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="error-count">0</div>
+            <div>Errores</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="cache-hits">0</div>
+            <div>Cache Hits</div>
+        </div>
+    </div>
+    
+    <div class="controls">
+        <button class="btn" onclick="toggleAutoRefresh()">
+            <span id="refresh-status">⏸️ Pausar</span>
+        </button>
+        <button class="btn danger" onclick="clearLogs()">🗑️ Limpiar Logs</button>
+        <button class="btn" onclick="exportLogs()">📥 Exportar</button>
+        <button class="btn" onclick="toggleFilter()">
+            <span id="filter-status">🔍 Solo Prompt/Respuesta</span>
+        </button>
+        <button class="btn" onclick="expandAll()">📖 Expandir Todo</button>
+        <button class="btn" onclick="collapseAll()">📕 Colapsar Todo</button>
+        <label>
+            <input type="checkbox" id="auto-scroll" checked> Auto-scroll
+        </label>
+    </div>
+    
+    <div class="logs-container" id="logs-container">
+        <div style="text-align: center; color: #888; margin-top: 50px;">
+            <p>🔄 Cargando logs de Ollama...</p>
+            <p>Los logs aparecerán aquí en tiempo real</p>
+        </div>
+    </div>
+    
+    <div class="auto-scroll">
+        <small>Actualización automática cada 2 segundos</small>
+    </div>
+
+    <script>
+        let autoRefresh = true;
+        let refreshInterval;
+        let showOnlyPromptResponse = false;
+        let allLogs = [];
+        let stats = {
+            total: 0,
+            success: 0,
+            errors: 0,
+            cacheHits: 0
+        };
+
+        function updateStats() {
+            document.getElementById('total-logs').textContent = stats.total;
+            document.getElementById('success-count').textContent = stats.success;
+            document.getElementById('error-count').textContent = stats.errors;
+            document.getElementById('cache-hits').textContent = stats.cacheHits;
+        }
+
+        function getLogClass(action, status) {
+            if (status === 'ERROR' || status === 'FALLIDO') return 'error';
+            if (status === 'COMPLETADO' || status === 'CACHE') return 'success';
+            if (status === 'REINTENTANDO') return 'warning';
+            return 'info';
+        }
+
+        function formatLog(log) {
+            const timestamp = new Date(log.timestamp).toLocaleTimeString();
+            const logClass = getLogClass(log.action, log.status);
+            const logId = `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            
+            let expandableContent = '';
+            let expandButton = '';
+            
+            // Agregar prompt y respuesta si están disponibles
+            if (log.prompt || log.response) {
+                expandButton = `<button class="expand-btn" onclick="toggleExpand('${logId}')">📋 Ver Prompt/Respuesta</button>`;
+                expandableContent = `
+                    <div id="${logId}" class="expandable-content">
+                        ${log.prompt ? `
+                            <div class="prompt-label">📤 PROMPT ENVIADO A OLLAMA</div>
+                            <div class="log-prompt">${log.prompt}</div>
+                        ` : ''}
+                        ${log.response ? `
+                            <div class="response-label">📥 RESPUESTA RECIBIDA DE OLLAMA</div>
+                            <div class="log-response">${log.response}</div>
+                        ` : ''}
+                    </div>
+                `;
+            }
+            
+            return `
+                <div class="log-entry ${logClass}">
+                    <div>
+                        <span class="log-timestamp">[${timestamp}]</span>
+                        <span class="log-term">${log.term || 'N/A'}</span>
+                        <span class="log-status">${log.status}</span>
+                        ${expandButton}
+                    </div>
+                    ${log.details ? `<div class="log-details">${log.details}</div>` : ''}
+                    ${expandableContent}
+                </div>
+            `;
+        }
+
+        async function fetchLogs() {
+            try {
+                const response = await fetch('/api/ollama/logs');
+                const data = await response.json();
+                
+                const container = document.getElementById('logs-container');
+                
+                if (data.logs.length === 0) {
+                    container.innerHTML = `
+                        <div style="text-align: center; color: #888; margin-top: 50px;">
+                            <p>📝 No hay logs disponibles</p>
+                            <p>Los logs aparecerán cuando se inicien traducciones</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Guardar todos los logs
+                allLogs = data.logs;
+                
+                // Filtrar logs si es necesario
+                let logsToShow = allLogs;
+                if (showOnlyPromptResponse) {
+                    logsToShow = allLogs.filter(log => log.prompt || log.response);
+                }
+                
+                // Actualizar estadísticas
+                stats.total = data.total_logs;
+                stats.success = allLogs.filter(log => log.status === 'COMPLETADO' || log.status === 'CACHE').length;
+                stats.errors = allLogs.filter(log => log.status === 'ERROR' || log.status === 'FALLIDO').length;
+                stats.cacheHits = allLogs.filter(log => log.status === 'CACHE').length;
+                updateStats();
+                
+                if (logsToShow.length === 0) {
+                    container.innerHTML = `
+                        <div style="text-align: center; color: #888; margin-top: 50px;">
+                            <p>🔍 No hay logs con Prompt/Respuesta</p>
+                            <p>Los logs con detalles de Ollama aparecerán aquí</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Mostrar logs (más recientes primero)
+                const logsHtml = logsToShow
+                    .slice()
+                    .reverse()
+                    .map(formatLog)
+                    .join('');
+                
+                container.innerHTML = logsHtml;
+                
+                // Auto-scroll si está habilitado
+                if (document.getElementById('auto-scroll').checked) {
+                    container.scrollTop = 0; // Scroll al top (más recientes)
+                }
+                
+            } catch (error) {
+                console.error('Error fetching logs:', error);
+                document.getElementById('logs-container').innerHTML = `
+                    <div style="text-align: center; color: #f44336; margin-top: 50px;">
+                        <p>❌ Error cargando logs</p>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function toggleAutoRefresh() {
+            autoRefresh = !autoRefresh;
+            const statusElement = document.getElementById('refresh-status');
+            
+            if (autoRefresh) {
+                statusElement.textContent = '⏸️ Pausar';
+                startAutoRefresh();
+            } else {
+                statusElement.textContent = '▶️ Reanudar';
+                clearInterval(refreshInterval);
+            }
+        }
+
+        function startAutoRefresh() {
+            if (refreshInterval) clearInterval(refreshInterval);
+            refreshInterval = setInterval(fetchLogs, 2000); // Cada 2 segundos
+        }
+
+        function clearLogs() {
+            if (confirm('¿Estás seguro de que quieres limpiar todos los logs?')) {
+                // Aquí podrías hacer una llamada a la API para limpiar logs
+                document.getElementById('logs-container').innerHTML = `
+                    <div style="text-align: center; color: #888; margin-top: 50px;">
+                        <p>🧹 Logs limpiados</p>
+                    </div>
+                `;
+                stats = { total: 0, success: 0, errors: 0, cacheHits: 0 };
+                updateStats();
+            }
+        }
+
+        function exportLogs() {
+            // Implementar exportación de logs
+            alert('Función de exportación en desarrollo');
+        }
+
+        function toggleFilter() {
+            showOnlyPromptResponse = !showOnlyPromptResponse;
+            const statusElement = document.getElementById('filter-status');
+            
+            if (showOnlyPromptResponse) {
+                statusElement.textContent = '👁️ Mostrar Todos';
+            } else {
+                statusElement.textContent = '🔍 Solo Prompt/Respuesta';
+            }
+            
+            // Re-renderizar logs con el filtro aplicado
+            fetchLogs();
+        }
+
+        function expandAll() {
+            const expandableElements = document.querySelectorAll('.expandable-content');
+            const buttons = document.querySelectorAll('.expand-btn');
+            
+            expandableElements.forEach(element => {
+                element.classList.add('expanded');
+            });
+            
+            buttons.forEach(button => {
+                button.textContent = '📋 Ocultar Prompt/Respuesta';
+                button.classList.add('expanded');
+            });
+        }
+
+        function collapseAll() {
+            const expandableElements = document.querySelectorAll('.expandable-content');
+            const buttons = document.querySelectorAll('.expand-btn');
+            
+            expandableElements.forEach(element => {
+                element.classList.remove('expanded');
+            });
+            
+            buttons.forEach(button => {
+                button.textContent = '📋 Ver Prompt/Respuesta';
+                button.classList.remove('expanded');
+            });
+        }
+
+        function toggleExpand(logId) {
+            const element = document.getElementById(logId);
+            if (element) {
+                element.classList.toggle('expanded');
+                
+                // Cambiar texto del botón
+                const button = element.previousElementSibling.querySelector('.expand-btn');
+                if (button) {
+                    if (element.classList.contains('expanded')) {
+                        button.textContent = '📋 Ocultar Prompt/Respuesta';
+                        button.classList.add('expanded');
+                    } else {
+                        button.textContent = '📋 Ver Prompt/Respuesta';
+                        button.classList.remove('expanded');
+                    }
+                }
+            }
+        }
+
+        // Inicializar
+        fetchLogs();
+        startAutoRefresh();
+        updateStats();
+    </script>
+</body>
+</html>

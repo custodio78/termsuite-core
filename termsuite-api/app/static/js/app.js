@@ -209,20 +209,22 @@ async function selectTMXLanguage() {
     showToast(`Extrayendo términos: ${langMsg}${modeMsg}...`, 'info');
     
     try {
-        let url = `${API_BASE}/api/extract-tmx-language?tmx_id=${state.tmxId}&language=${sourceLanguage}`;
+        // CORREGIDO: Usar POST con JSON en lugar de query parameters
+        const payload = {
+            tmx_id: state.tmxId,
+            language: sourceLanguage,
+            use_termsuite: useTermSuite
+        };
         
         // Agregar idioma destino si está visible
         if (targetContainer.style.display !== 'none') {
-            url += `&target_language=${targetLanguage}`;
+            payload.target_language = targetLanguage;
         }
         
-        // Agregar modo TermSuite
-        if (useTermSuite) {
-            url += `&use_termsuite=true`;
-        }
-        
-        const response = await fetch(url, {
-            method: 'POST'
+        const response = await fetch(`${API_BASE}/api/extract-tmx-language`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
         });
         
         const data = await response.json();
@@ -230,6 +232,12 @@ async function selectTMXLanguage() {
         if (response.ok) {
             showToast(data.message, 'success');
             updateStats('tmx', data.message);
+            
+            // NUEVO: Si hay translation_job_id, monitorear progreso
+            if (data.translation_job_id) {
+                showToast('Traducciones automáticas iniciadas...', 'info');
+                monitorTranslationJobClassic(data.translation_job_id);
+            }
             
             // Actualizar etiqueta de traducción si hay idioma destino
             if (targetContainer.style.display !== 'none') {
@@ -707,4 +715,30 @@ function showToast(message, type = 'info') {
     
     const bsToast = new bootstrap.Toast(toast);
     bsToast.show();
+}
+
+// Monitor Translation Job for Classic Interface
+function monitorTranslationJobClassic(jobId) {
+    const interval = setInterval(async () => {
+        try {
+            const response = await fetch(`${API_BASE}/api/status/${jobId}`);
+            const data = await response.json();
+            
+            if (data.status === 'completed') {
+                clearInterval(interval);
+                showToast('Traducciones automáticas completadas', 'success');
+            } else if (data.status === 'failed') {
+                clearInterval(interval);
+                showToast('Error en traducciones automáticas', 'error');
+            } else {
+                // Mostrar progreso si está disponible
+                const progress = data.progress || 0;
+                const message = data.message || 'Traduciendo...';
+                showToast(`${progress}% - ${message}`, 'info');
+            }
+        } catch (error) {
+            clearInterval(interval);
+            console.warn('Error monitoreando traducciones:', error);
+        }
+    }, 3000); // Verificar cada 3 segundos
 }

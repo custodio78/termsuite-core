@@ -15,4 +15,9 @@ services:
       - TREETAGGER_HOME=/app/treetagger
       - DATA_DIR=/app/data
       - JAVA_OPTS=-Xms1g -Xmx4g
+      # Optimized Ollama Configuration
+      - OLLAMA_BATCH_SIZE=10
+      - OLLAMA_MAX_CONCURRENT=10
+      - OLLAMA_TIMEOUT=45
+      - OLLAMA_UNIFIED_MODE=true
     restart: unless-stopped

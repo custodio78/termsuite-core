@@ -14,7 +14,8 @@ let state = {
         minWords: 1,
         maxWords: 5,
         excludeNumbers: false,
-        includeTranslations: true
+        includeTranslations: true,
+        useOllama: true
     }
 };
 
@@ -24,6 +25,7 @@ const API_BASE = '';
 document.addEventListener('DOMContentLoaded', function() {
     setupFileUpload();
     setupDragAndDrop();
+    checkOllamaStatus();
 });
 
 // Setup File Upload
@@ -207,12 +209,16 @@ function populateLanguageSelectors(languages, langNames) {
         targetSelect.appendChild(targetOption);
     });
     
-    // Set default selection
+    // Set default selection - prioritize Spanish if available, otherwise first language
     if (languages.length >= 2) {
-        sourceSelect.value = languages[0];
-        targetSelect.value = languages[1];
-        state.sourceLanguage = languages[0];
-        state.targetLanguage = languages[1];
+        // Prefer Spanish as source language if available
+        const preferredSource = languages.includes('es') ? 'es' : languages[0];
+        const preferredTarget = languages.find(lang => lang !== preferredSource) || languages[1];
+        
+        sourceSelect.value = preferredSource;
+        targetSelect.value = preferredTarget;
+        state.sourceLanguage = preferredSource;
+        state.targetLanguage = preferredTarget;
     } else if (languages.length === 1) {
         sourceSelect.value = languages[0];
         state.sourceLanguage = languages[0];
@@ -327,10 +333,15 @@ async function startExtraction() {
     state.sourceLanguage = document.getElementById('source-language').value;
     state.targetLanguage = document.getElementById('target-language').value;
     state.config.includeTranslations = document.getElementById('include-translations').checked;
+    state.config.useOllama = document.getElementById('use-ollama').checked;
     state.config.minFrequency = parseInt(document.getElementById('min-frequency').value);
     state.config.minWords = parseInt(document.getElementById('min-words').value);
     state.config.maxWords = parseInt(document.getElementById('max-words').value);
     state.config.excludeNumbers = document.getElementById('exclude-numbers').checked;
+    
+    // NUEVO: Obtener configuración de ámbito/dominio
+    state.config.domainDescription = document.getElementById('domain-description').value.trim();
+    state.config.useDomainClassification = document.getElementById('use-domain-classification').checked;
     
     // Go to step 3
     goToStep(3);
@@ -348,27 +359,46 @@ async function extractTerms() {
         let extractData;
         
         if (state.fileType === 'tmx') {
-            // TMX extraction
-            let url = `${API_BASE}/api/extract-tmx-language?tmx_id=${state.fileId}&language=${state.sourceLanguage}`;
+            // TMX extraction - CORREGIDO: Usar POST con JSON
+            const payload = {
+                tmx_id: state.fileId,
+                language: state.sourceLanguage,
+                use_termsuite: true
+            };
             
+            // Incluir idioma destino si está disponible
             if (state.targetLanguage && state.availableLanguages.length > 1) {
-                url += `&target_language=${state.targetLanguage}`;
+                payload.target_language = state.targetLanguage;
             }
             
-            url += `&use_termsuite=true`;
+            // NUEVO: Incluir descripción del dominio si está disponible
+            if (state.config.domainDescription && state.config.useDomainClassification) {
+                payload.domain_description = state.config.domainDescription;
+            }
             
-            const extractResponse = await fetch(url, { method: 'POST' });
+            const extractResponse = await fetch(`${API_BASE}/api/extract-tmx-language`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            
             extractData = await extractResponse.json();
             
             if (!extractResponse.ok) {
                 throw new Error(extractData.detail || 'Error en la extracción');
             }
+            
+            // NUEVO: Si hay translation_job_id, monitorear progreso
+            if (extractData.translation_job_id) {
+                updateProgress(40, 'Iniciando traducciones automáticas...');
+                await monitorTranslationJob(extractData.translation_job_id);
+            }
         } else {
-            // Corpus extraction
+            // Corpus extraction (use min frequency 1 for corpus to get more results)
             const payload = {
                 corpus_id: state.fileId,
                 language: state.sourceLanguage,
-                min_frequency: state.config.minFrequency
+                min_frequency: 1
             };
             
             const extractResponse = await fetch(`${API_BASE}/api/extract`, {
@@ -429,6 +459,38 @@ async function pollCorpusJob(jobId) {
             } catch (error) {
                 clearInterval(interval);
                 reject(error);
+            }
+        }, 2000);
+    });
+}
+
+// Monitor Translation Job - NUEVO
+async function monitorTranslationJob(jobId) {
+    return new Promise((resolve, reject) => {
+        const interval = setInterval(async () => {
+            try {
+                const response = await fetch(`${API_BASE}/api/status/${jobId}`);
+                const data = await response.json();
+                
+                // Progreso de 40% a 90% para traducciones
+                const translationProgress = 40 + (data.progress * 0.5);
+                updateProgress(translationProgress, data.message || 'Traduciendo términos...');
+                
+                if (data.status === 'completed') {
+                    clearInterval(interval);
+                    updateProgress(90, 'Traducciones completadas');
+                    resolve(data);
+                } else if (data.status === 'failed') {
+                    clearInterval(interval);
+                    console.warn('Traducciones fallaron, continuando sin ellas:', data.error);
+                    // No rechazar, continuar sin traducciones
+                    resolve({ status: 'completed_without_translations' });
+                }
+            } catch (error) {
+                clearInterval(interval);
+                console.warn('Error monitoreando traducciones, continuando:', error);
+                // No rechazar, continuar sin traducciones
+                resolve({ status: 'completed_without_translations' });
             }
         }, 2000);
     });
@@ -500,27 +562,210 @@ async function showResults(data) {
     document.getElementById('stat-languages').textContent = langText;
 }
 
-// Download Results
-function downloadResults() {
-    let downloadUrl;
-    
-    if (state.fileType === 'tmx') {
-        const params = new URLSearchParams({
-            min_frequency: state.config.minFrequency,
-            min_words: state.config.minWords,
-            max_words: state.config.maxWords,
-            sort_by: 'frequency',
-            format: 'excel',
-            exclude_numbers: state.config.excludeNumbers,
-            include_translation: state.config.includeTranslations
-        });
-        downloadUrl = `${API_BASE}/api/export/tmx-excel/${state.fileId}?${params.toString()}`;
-    } else {
-        downloadUrl = `${API_BASE}/api/export/excel/${state.jobId}`;
+// Download Results Optimized
+async function downloadResultsOptimized() {
+    const downloadBtn = document.querySelector('.btn-download');
+    if (!downloadBtn || !state.fileId) {
+        showToast('Error: No hay archivo cargado', 'error');
+        return;
     }
     
-    window.location.href = downloadUrl;
-    showToast('Descarga iniciada', 'success');
+    const originalText = downloadBtn.innerHTML;
+    
+    try {
+        downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verificando...';
+        downloadBtn.disabled = true;
+        
+        // Verificar si hay procesamiento unificado disponible
+        const unifiedStatus = await checkUnifiedStatus(state.fileId);
+        
+        if (unifiedStatus.unified_ready && unifiedStatus.instant_download_available) {
+            // DESCARGA INSTANTÁNEA
+            downloadBtn.innerHTML = '<i class="fas fa-download"></i> Descarga instantánea...';
+            
+            const downloadUrl = `${API_BASE}/api/export/tmx-excel-instant/${state.fileId}`;
+            
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = `terminos_unificado_${state.sourceLanguage}_${state.targetLanguage}.xlsx`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showToast('¡Excel descargado instantáneamente con procesamiento unificado!', 'success');
+            
+        } else if (unifiedStatus.in_progress) {
+            // MOSTRAR PROGRESO
+            downloadBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${unifiedStatus.progress}% - ${unifiedStatus.message}`;
+            
+            // Esperar y reintentar
+            setTimeout(() => downloadResultsOptimized(), 2000);
+            return;
+            
+        } else {
+            // FALLBACK AL MÉTODO TRADICIONAL
+            downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Preparando (método tradicional)...';
+            
+            // Usar el método de descarga original
+            await downloadResults();
+        }
+        
+    } catch (error) {
+        showToast(`Error: ${error.message}`, 'error');
+    } finally {
+        downloadBtn.innerHTML = originalText;
+        downloadBtn.disabled = false;
+    }
+}
+
+async function checkUnifiedStatus(tmxId) {
+    try {
+        const response = await fetch(`${API_BASE}/api/tmx/${tmxId}/unified-status`);
+        const data = await response.json();
+        return data;
+    } catch (error) {
+        console.error('Error checking unified status:', error);
+        return { unified_ready: false };
+    }
+}
+
+// Download Results (Original)
+async function downloadResults() {
+    const downloadBtn = document.querySelector('.btn-download');
+    if (!downloadBtn) {
+        console.error('Botón de descarga no encontrado');
+        showToast('Error: Botón de descarga no encontrado', 'error');
+        return;
+    }
+    
+    if (!state.fileId) {
+        console.error('No hay archivo cargado');
+        showToast('Error: No hay archivo cargado', 'error');
+        return;
+    }
+    
+    const originalText = downloadBtn.innerHTML;
+    
+    if (state.fileType === 'tmx') {
+        try {
+            downloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verificando...';
+            downloadBtn.disabled = true;
+            
+            // NUEVO: Verificar si está listo para descarga rápida
+            const readyResponse = await fetch(`${API_BASE}/api/tmx/${state.fileId}/export-ready`);
+            const readyData = await readyResponse.json();
+            
+            if (readyData.ready_for_fast_download && state.config.includeTranslations) {
+                // FLUJO RÁPIDO: Usar descarga directa con datos pre-procesados (≤100 términos)
+                downloadBtn.innerHTML = '<i class="fas fa-download"></i> Descargando...';
+                
+                const params = {
+                    min_frequency: state.config.minFrequency,
+                    min_words: state.config.minWords,
+                    max_words: state.config.maxWords,
+                    sort_by: 'frequency',
+                    format: 'excel',
+                    exclude_numbers: state.config.excludeNumbers,
+                    include_translation: true  // Usar datos pre-procesados
+                };
+                
+                const queryParams = new URLSearchParams(params);
+                const downloadUrl = `${API_BASE}/api/export/tmx-excel/${state.fileId}?${queryParams}`;
+                
+                // Descarga directa
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.download = `terminos_${state.sourceLanguage}_${state.targetLanguage || 'traducido'}.xlsx`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                showToast(`¡Excel descargado! (${readyData.total_terms} términos pre-procesados)`, 'success');
+                
+            } else {
+                // FLUJO ASÍNCRONO: Usar descarga asíncrona para archivos grandes o sin pre-procesamiento
+                const reason = readyData.total_terms > 100 ? 
+                    `Procesando ${readyData.total_terms} términos (>100)` : 
+                    readyData.needs_domain_processing ? 
+                    'Clasificando términos por ámbito' :
+                    'Preparando traducciones';
+                downloadBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${reason}...`;
+                
+                const params = {
+                    min_frequency: state.config.minFrequency,
+                    min_words: state.config.minWords,
+                    max_words: state.config.maxWords,
+                    sort_by: 'frequency',
+                    format: 'excel',
+                    exclude_numbers: state.config.excludeNumbers,
+                    include_translation: state.config.includeTranslations,
+                    use_ollama: state.config.useOllama
+                };
+                
+                const queryParams = new URLSearchParams(params);
+                const response = await fetch(`${API_BASE}/api/export/tmx-excel-async/${state.fileId}?${queryParams}`, {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Monitorear progreso
+                    await pollExportJob(data.export_job_id);
+                    showToast('Descarga completada', 'success');
+                } else {
+                    throw new Error(data.detail || 'Error en la exportación');
+                }
+            }
+        } catch (error) {
+            showToast(`Error: ${error.message}`, 'error');
+        } finally {
+            downloadBtn.innerHTML = originalText;
+            downloadBtn.disabled = false;
+        }
+    } else {
+        // Para corpus, usar descarga directa
+        const downloadUrl = `${API_BASE}/api/export/excel/${state.jobId}`;
+        window.location.href = downloadUrl;
+        showToast('Descarga iniciada', 'success');
+    }
+}
+
+// Poll Export Job
+async function pollExportJob(exportJobId) {
+    const downloadBtn = document.querySelector('.btn-download');
+    if (!downloadBtn) {
+        console.error('Botón de descarga no encontrado en pollExportJob');
+        return Promise.reject(new Error('Botón de descarga no encontrado'));
+    }
+    
+    return new Promise((resolve, reject) => {
+        const interval = setInterval(async () => {
+            try {
+                const response = await fetch(`${API_BASE}/api/status/${exportJobId}`);
+                const data = await response.json();
+                
+                // Actualizar botón con progreso
+                downloadBtn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${data.progress}% - ${data.message}`;
+                
+                if (data.status === 'completed') {
+                    clearInterval(interval);
+                    
+                    // Descargar archivo
+                    const downloadUrl = `${API_BASE}/api/download/export/${exportJobId}`;
+                    window.location.href = downloadUrl;
+                    
+                    resolve(data);
+                } else if (data.status === 'failed') {
+                    clearInterval(interval);
+                    reject(new Error(data.error || 'Error en la exportación'));
+                }
+            } catch (error) {
+                clearInterval(interval);
+                reject(error);
+            }
+        }, 1000); // Verificar cada segundo
+    });
 }
 
 // Reset Wizard
@@ -618,3 +863,54 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
+
+// Check Ollama Status
+async function checkOllamaStatus() {
+    try {
+        const response = await fetch(`${API_BASE}/api/ollama/status`);
+        const data = await response.json();
+        
+        const ollamaCheckbox = document.getElementById('use-ollama');
+        const ollamaLabel = ollamaCheckbox.nextElementSibling;
+        
+        if (data.available) {
+            // Ollama disponible
+            ollamaCheckbox.disabled = false;
+            ollamaLabel.classList.remove('text-muted');
+            
+            // Actualizar texto con información del modelo
+            const modelInfo = data.model ? ` (${data.model})` : '';
+            ollamaLabel.innerHTML = `
+                <i class="fas fa-robot me-1 text-success"></i>Usar Ollama para términos sin traducción${modelInfo}
+                <small class="d-block text-muted">Traduce automáticamente términos con coincidencia parcial</small>
+            `;
+        } else {
+            // Ollama no disponible
+            ollamaCheckbox.disabled = true;
+            ollamaCheckbox.checked = false;
+            state.config.useOllama = false;
+            ollamaLabel.classList.add('text-muted');
+            
+            ollamaLabel.innerHTML = `
+                <i class="fas fa-robot me-1 text-danger"></i>Ollama no disponible
+                <small class="d-block text-muted">Servidor Ollama no encontrado: ${data.error || 'dirección configurada'}</small>
+            `;
+        }
+    } catch (error) {
+        console.error('Error checking Ollama status:', error);
+        
+        // En caso de error, deshabilitar Ollama
+        const ollamaCheckbox = document.getElementById('use-ollama');
+        const ollamaLabel = ollamaCheckbox.nextElementSibling;
+        
+        ollamaCheckbox.disabled = true;
+        ollamaCheckbox.checked = false;
+        state.config.useOllama = false;
+        ollamaLabel.classList.add('text-muted');
+        
+        ollamaLabel.innerHTML = `
+            <i class="fas fa-robot me-1 text-warning"></i>Ollama no disponible
+            <small class="d-block text-muted">No se pudo verificar el estado del servidor</small>
+        `;
+    }
+}

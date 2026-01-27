@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Frontend Syntax</title>
+</head>
+<body>
+    <h1>Testing JavaScript Syntax</h1>
+    <div id="result"></div>
+    
+    <script>
+        // Test if app_v2.js loads without syntax errors
+        const script = document.createElement('script');
+        script.src = '/static/js/app_v2.js';
+        script.onload = function() {
+            document.getElementById('result').innerHTML = '<span style="color: green;">✅ JavaScript loaded successfully!</span>';
+        };
+        script.onerror = function() {
+            document.getElementById('result').innerHTML = '<span style="color: red;">❌ JavaScript syntax error!</span>';
+        };
+        document.head.appendChild(script);
+    </script>
+</body>
+</html>

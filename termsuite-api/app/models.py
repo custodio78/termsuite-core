@@ -28,6 +28,12 @@ class ExtractionRequest(BaseModel):
     tmx_id: Optional[str] = Field(default=None, description="ID de la memoria TMX")
 
 
+class BatchTranslationRequest(BaseModel):
+    terms: List[str] = Field(..., description="Lista de términos a traducir")
+    source_lang: str = Field(..., description="Idioma origen")
+    target_lang: str = Field(..., description="Idioma destino")
+
+
 class ExtractionResponse(BaseModel):
     job_id: str
     status: JobStatus
@@ -48,6 +54,20 @@ class UploadResponse(BaseModel):
     filename: str
     size: int
     message: str
+
+
+class ExtractTMXLanguageRequest(BaseModel):
+    tmx_id: str = Field(..., description="ID del TMX")
+    language: str = Field(..., description="Idioma origen")
+    target_language: Optional[str] = Field(default=None, description="Idioma destino (opcional)")
+    use_termsuite: bool = Field(default=False, description="Usar TermSuite para extraer términos individuales")
+    domain_description: Optional[str] = Field(default=None, description="Descripción del ámbito/dominio para clasificar términos")
+
+
+class DomainClassificationRequest(BaseModel):
+    terms: List[str] = Field(..., description="Lista de términos a clasificar")
+    domain_description: str = Field(..., description="Descripción del ámbito/dominio")
+    language: str = Field(default="es", description="Idioma de los términos")
 
 
 class TermEntry(BaseModel):

@@ -56,6 +56,13 @@ RUN if [ -f /tmp/treetagger/tree-tagger-linux-3.2.5.tar.gz ] || [ -f /tmp/treeta
                     cp "$file" .; \
                 fi; \
             done; \
+            echo "Descomprimiendo todos los modelos .gz restantes..."; \
+            for file in *.par.gz; do \
+                if [ -f "$file" ]; then \
+                    echo "Descomprimiendo: $file"; \
+                    gunzip "$file"; \
+                fi; \
+            done; \
         fi && \
         echo "✓ TreeTagger instalado correctamente"; \
         echo "Modelos instalados:"; \
