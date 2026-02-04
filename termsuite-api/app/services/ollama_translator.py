@@ -22,8 +22,14 @@ class OllamaTranslator:
         self.cache_dir = Path(os.getenv('DATA_DIR', '/app/data')) / 'ollama_cache'
         self.cache_dir.mkdir(exist_ok=True)
         
-        # Caché en memoria para sesión actual
-        self.memory_cache = {}
+        # Caché en memoria para sesión actual (LRU con límite)
+        try:
+            from collections import OrderedDict
+            self.memory_cache = OrderedDict()
+        except ImportError:
+            # Fallback a dict normal si OrderedDict no está disponible
+            self.memory_cache = {}
+        self.memory_cache_max_size = int(os.getenv('OLLAMA_MEMORY_CACHE_SIZE', '1000'))
         
         # Configuración de rendimiento
         self.batch_size = int(os.getenv('OLLAMA_BATCH_SIZE', '5'))
@@ -92,25 +98,45 @@ class OllamaTranslator:
         """Obtener traducción desde caché"""
         cache_key = self._get_cache_key(term, source_lang, target_lang, context)
         
-        # Primero verificar caché en memoria
+        # Primero verificar caché en memoria (LRU)
         if cache_key in self.memory_cache:
+            # Mover al final (más reciente) si es OrderedDict
+            if hasattr(self.memory_cache, 'move_to_end'):
+                self.memory_cache.move_to_end(cache_key)
             return self.memory_cache[cache_key]
         
         # Luego verificar caché persistente
         cache_data = self._load_cache(source_lang, target_lang)
         if cache_key in cache_data:
-            # Cargar en memoria para acceso rápido
-            self.memory_cache[cache_key] = cache_data[cache_key]
+            # Cargar en memoria para acceso rápido (con gestión LRU)
+            self._add_to_memory_cache(cache_key, cache_data[cache_key])
             return cache_data[cache_key]
         
         return None
+    
+    def _add_to_memory_cache(self, cache_key: str, value: dict):
+        """Agregar al caché en memoria con gestión LRU"""
+        # Si existe, mover al final (más reciente)
+        if cache_key in self.memory_cache:
+            if hasattr(self.memory_cache, 'move_to_end'):
+                self.memory_cache.move_to_end(cache_key)
+        else:
+            # Si está lleno, eliminar el más antiguo (primero)
+            if len(self.memory_cache) >= self.memory_cache_max_size:
+                if hasattr(self.memory_cache, 'popitem'):
+                    self.memory_cache.popitem(last=False)  # Eliminar el más antiguo
+                else:
+                    # Fallback: eliminar el primero (no es LRU perfecto pero funciona)
+                    first_key = next(iter(self.memory_cache))
+                    del self.memory_cache[first_key]
+            self.memory_cache[cache_key] = value
     
     def _save_to_cache(self, term: str, source_lang: str, target_lang: str, context: str, result: dict):
         """Guardar traducción en caché"""
         cache_key = self._get_cache_key(term, source_lang, target_lang, context)
         
-        # Guardar en memoria
-        self.memory_cache[cache_key] = result
+        # Guardar en memoria (con gestión LRU)
+        self._add_to_memory_cache(cache_key, result)
         
         # Guardar en archivo
         cache_data = self._load_cache(source_lang, target_lang)
@@ -189,46 +215,33 @@ class OllamaTranslator:
             source_name = lang_names.get(source_lang, source_lang)
             target_name = lang_names.get(target_lang, target_lang)
             
-            # Crear prompt para traducción técnica BASADA EN CONTEXTO TMX
-            if context:
-                prompt = f"""You are a professional technical translator. Translate the following term from {source_name} to {target_name} based STRICTLY on the provided TMX context.
+            # Crear prompt: la traducción DEBE ser una frase coherente del contexto
+            if context and context.strip() and context.lower() not in ('sin contexto', 'sin contexto tmx', ''):
+                prompt = f"""Translate the term using ONLY the context below. Output a single phrase or word that appears in the context as the translation of the term.
 
-Term to translate: "{term}"
-Source language: {source_name}
-Target language: {target_name}
-TMX Context: {context}
+=== CONTEXT ===
+{context}
+=== END CONTEXT ===
 
-CRITICAL Instructions:
-- ONLY extract translations that literally appear in the TMX context provided above
-- DO NOT add any translations that are not explicitly present in the context text
-- DO NOT include the original term itself as a translation (e.g., don't translate "usuario" as "usuario")
-- Look for exact matches or variations of the term in the target language within the context
-- If multiple variations exist in the context, separate them with " | " (pipe symbol with spaces)
-- Order from most frequent to least frequent in the context
-- Respond with only the translated term(s) that you can find in the context text
-- If the term does not appear translated in the context, respond with "NOT_FOUND"
+Term: "{term}" ({source_name} → {target_name})
 
-Examples based on context:
-- Context: "The user must protect..." Term: "usuario" → "user"
-- Context: "end user protection" Term: "usuario" → "end user"
-- Context: "The user and end user must..." Term: "usuario" → "user | end user"
-- Context: "sistema de gestión" Term: "usuario" → "NOT_FOUND"
+Rules:
+- Output the direct translation word or phrase from the context. Prefer the simple equivalent when it appears: e.g. for "jeringa" output "syringe" (the word that means jeringa), not "3-piece syringe" unless the source term is clearly more specific.
+- Copy only a contiguous word or phrase from the context. Do NOT mix words from different sentences.
+- If several valid equivalents exist, separate with " | " and put the simplest first (e.g. "syringe | 3-piece syringe").
+- If the term has no equivalent in the context, reply exactly: NOT_FOUND
+- Reply with only the translation(s) or NOT_FOUND.
 
 Translation:"""
             else:
-                prompt = f"""You are a professional technical translator. Translate the following term from {source_name} to {target_name}.
+                prompt = f"""You are a technical translator. Translate the term from {source_name} to {target_name}.
 
-Term to translate: "{term}"
-Source language: {source_name}
-Target language: {target_name}
+Term: "{term}"
 
-Instructions:
-- Provide the most accurate technical translation for this term
-- If it's a technical term, preserve its technical meaning
-- Provide up to 3 most relevant translations separated by " | " (pipe symbol with spaces)
-- Order from most common to least common usage
-- Respond with only the translated term(s), no explanations
-- If the term is a proper noun or doesn't need translation, return it as is
+Rules:
+- One or more accurate technical translations, separated by " | " if needed.
+- Only the translation(s), no explanations or extra text.
+- If it is a proper noun or does not need translation, return it unchanged.
 
 Translation:"""
             
@@ -242,9 +255,9 @@ Translation:"""
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "temperature": 0.1,  # Baja temperatura para traducciones más consistentes
+                    "temperature": 0.05,
                     "top_p": 0.9,
-                    "max_tokens": 50
+                    "max_tokens": 120
                 }
             }
             
@@ -639,36 +652,29 @@ Translations:"""
         
         # Limpiar y validar múltiples traducciones separadas por |
         if '|' in translation:
-            # Dividir por | y limpiar cada parte
             parts = [part.strip() for part in translation.split('|')]
-            # Filtrar partes vacías, NOT_FOUND y muy largas
             valid_parts = []
             for part in parts:
-                # Limpiar cada parte individualmente
-                part = re.sub(r'^\*\s*', '', part)  # Remover asteriscos
-                part = re.sub(r'^["\'"]+|["\'"]+$', '', part)  # Remover comillas
+                part = re.sub(r'^\*\s*', '', part)
+                part = re.sub(r'^["\'"]+|["\'"]+$', '', part)
                 part = part.strip()
-                
-                if (part and len(part) > 1 and len(part) < 100 and 
-                    part.upper() != "NOT_FOUND" and
-                    not any(phrase in part.lower() for phrase in ['based on', 'context', 'found'])):
-                    valid_parts.append(part)
-            
+                # Permitir partes hasta 180 caracteres; descartar solo si es explicación
+                if (part and len(part) > 1 and part.upper() != "NOT_FOUND" and
+                    not part.lower().startswith(('based on', 'according to', 'i found', 'the translation is', 'here is'))):
+                    valid_parts.append(part[:180] if len(part) > 180 else part)
             if valid_parts:
                 translation = ' | '.join(valid_parts)
             else:
                 return ""
         
-        # Limpiar caracteres extraños finales
-        translation = re.sub(r'^\*\s*', '', translation)  # Asteriscos al inicio
-        translation = re.sub(r'^["\'"]+|["\'"]+$', '', translation)  # Comillas
-        translation = translation.rstrip('.,;:')  # Puntuación al final
-        
-        # Verificación final: si la traducción es muy larga o contiene texto explicativo, descartarla
-        if (len(translation) > 200 or 
-            any(phrase in translation.lower() for phrase in ['based on', 'according to', 'i found', 'context provided'])):
+        translation = re.sub(r'^\*\s*', '', translation)
+        translation = re.sub(r'^["\'"]+|["\'"]+$', '', translation)
+        translation = translation.rstrip('.,;:')
+        # No descartar por longitud: truncar a 200 caracteres
+        if len(translation) > 200:
+            translation = translation[:197].rstrip() + "..."
+        if translation.lower().startswith(('based on', 'according to', 'i found', 'context provided')):
             return ""
-        
         return translation.strip()
     
     def _remove_duplicates_and_original(self, translation: str, original_term: str) -> str:
@@ -737,7 +743,7 @@ Translations:"""
                 result = self._classify_with_ollama(term, domain_description, language)
                 if result:
                     # Guardar en caché
-                    self.memory_cache[cache_key] = result
+                    self._add_to_memory_cache(cache_key, result)
                     if self.log_callback:
                         self.log_callback("DOMAIN_CLASSIFY_SUCCESS", term, "COMPLETADO", f"Relevancia: {result['relevance']} ({result['confidence']}%)")
                     return result
@@ -942,34 +948,36 @@ Reason: [Brief explanation in {lang_name}]"""
         if not remaining_terms:
             return classifications
         
-        # 2. Procesar términos restantes en lotes
-        # Crear semáforo para limitar concurrencia
+        # 2. Procesar términos restantes en lotes (múltiples términos por petición)
+        # Dividir en lotes para enviar múltiples términos en una sola petición
+        batch_size = max(1, max_concurrent)  # Usar max_concurrent como tamaño de lote
+        batches = [remaining_terms[i:i + batch_size] for i in range(0, len(remaining_terms), batch_size)]
+        
+        async def classify_batch(terms_batch):
+            """Clasificar un lote de términos en una sola petición a Ollama"""
+            try:
+                result = await self._classify_batch_with_ollama(terms_batch, domain_description, language)
+                return result
+            except Exception as e:
+                print(f"Error classifying batch: {str(e)}")
+                return {}
+        
+        # Procesar lotes en paralelo
         semaphore = asyncio.Semaphore(max_concurrent)
-        
-        async def classify_single(term):
+        async def classify_batch_with_semaphore(terms_batch):
             async with semaphore:
-                try:
-                    # Usar requests en un executor para no bloquear
-                    loop = asyncio.get_event_loop()
-                    classification_result = await loop.run_in_executor(
-                        None, 
-                        self.classify_domain_relevance, 
-                        term, 
-                        domain_description,
-                        language
-                    )
-                    
-                    if classification_result:
-                        return term, classification_result
-                    return term, None
-                    
-                except Exception as e:
-                    print(f"Error classifying domain relevance for '{term}': {str(e)}")
-                    return term, None
+                return await classify_batch(terms_batch)
         
-        # Ejecutar clasificaciones en paralelo solo para términos no cacheados
-        tasks = [classify_single(term) for term in remaining_terms]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        tasks = [classify_batch_with_semaphore(batch) for batch in batches]
+        batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Combinar resultados de todos los lotes
+        results = []
+        for batch_result in batch_results:
+            if isinstance(batch_result, dict):
+                results.extend(batch_result.items())
+            elif isinstance(batch_result, Exception):
+                print(f"Error en lote: {str(batch_result)}")
         
         # Procesar resultados
         for result in results:
@@ -977,6 +985,173 @@ Reason: [Brief explanation in {lang_name}]"""
                 term, classification_result = result
                 if classification_result:
                     classifications[term] = classification_result
+        
+        return classifications
+
+    async def _classify_batch_with_ollama(self, terms: List[str], domain_description: str, language: str) -> Dict[str, dict]:
+        """
+        Clasificar múltiples términos en una sola petición a Ollama (más eficiente)
+        
+        Args:
+            terms: Lista de términos a clasificar (hasta batch_size)
+            domain_description: Descripción del ámbito/dominio
+            language: Idioma de los términos
+            
+        Returns:
+            Diccionario con término -> {relevance, confidence, reason}
+        """
+        if not terms:
+            return {}
+        
+        try:
+            # Mapeo de códigos de idioma
+            lang_names = {
+                'es': 'Spanish', 'en': 'English', 'fr': 'French', 'de': 'German',
+                'it': 'Italian', 'pt': 'Portuguese', 'ca': 'Catalan', 'eu': 'Basque', 'gl': 'Galician'
+            }
+            lang_name = lang_names.get(language, language)
+            
+            # Crear prompt para clasificación en lote
+            terms_list = '\n'.join([f"- {term}" for term in terms])
+            prompt = f"""You are an expert domain classifier. Analyze if the given terms are relevant to the specified domain/scope.
+
+Terms to analyze:
+{terms_list}
+
+Language: {lang_name}
+Domain/Scope: "{domain_description}"
+
+Instructions:
+- For EACH term, determine if it is directly related to the specified domain
+- Consider technical terminology, concepts, processes, tools, or entities specific to that domain
+- Provide a relevance classification: "Sí" (Yes), "No", or "Incierto" (Uncertain)
+- Provide a confidence percentage (0-100)
+- Be strict: only classify as "Sí" if the term is clearly and specifically related to the domain
+- Generic terms that could apply to any domain should be classified as "No" or "Incierto"
+
+Respond in this exact format for EACH term:
+Term: [term]
+Relevance: [Sí/No/Incierto]
+Confidence: [0-100]%
+Reason: [Brief explanation in {lang_name}]
+
+---"""
+            
+            # Hacer petición asíncrona a Ollama
+            payload = {
+                "model": self.model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.1,
+                    "top_p": 0.9,
+                    "max_tokens": 200 * len(terms)  # Más tokens para múltiples términos
+                }
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.base_url}/api/generate",
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=self.timeout)
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        raw_response = result.get('response', '').strip()
+                        
+                        # Parsear respuesta para múltiples términos
+                        return self._parse_batch_classification_response(raw_response, terms)
+                    else:
+                        print(f"Error en clasificación batch: {response.status}")
+                        return {}
+                        
+        except Exception as e:
+            print(f"Error en _classify_batch_with_ollama: {str(e)}")
+            return {}
+    
+    def _parse_batch_classification_response(self, response: str, terms: List[str]) -> Dict[str, dict]:
+        """
+        Parsear respuesta de Ollama con múltiples clasificaciones
+        
+        Args:
+            response: Respuesta cruda de Ollama
+            terms: Lista de términos esperados
+            
+        Returns:
+            Diccionario con término -> clasificación
+        """
+        classifications = {}
+        
+        # Dividir respuesta por término
+        current_term = None
+        current_classification = {}
+        
+        for line in response.split('\n'):
+            line = line.strip()
+            if not line or line.startswith('---'):
+                # Guardar clasificación anterior si existe
+                if current_term and current_classification:
+                    if 'relevance' in current_classification and 'confidence' in current_classification:
+                        classifications[current_term] = current_classification
+                        current_classification = {}
+                continue
+            
+            # Detectar inicio de nuevo término
+            if line.lower().startswith('term:'):
+                # Guardar clasificación anterior si existe
+                if current_term and current_classification:
+                    if 'relevance' in current_classification and 'confidence' in current_classification:
+                        classifications[current_term] = current_classification
+                
+                # Iniciar nueva clasificación
+                term_part = line.split(':', 1)[1].strip()
+                current_term = term_part
+                current_classification = {}
+            
+            elif current_term:
+                # Parsear campos de clasificación
+                if line.lower().startswith('relevance:'):
+                    relevance_part = line.split(':', 1)[1].strip()
+                    current_classification['relevance'] = relevance_part
+                
+                elif line.lower().startswith('confidence:'):
+                    confidence_part = line.split(':', 1)[1].strip()
+                    import re
+                    confidence_match = re.search(r'(\d+)', confidence_part)
+                    if confidence_match:
+                        current_classification['confidence'] = int(confidence_match.group(1))
+                
+                elif line.lower().startswith('reason:'):
+                    reason_part = line.split(':', 1)[1].strip()
+                    current_classification['reason'] = reason_part
+        
+        # Guardar última clasificación
+        if current_term and current_classification:
+            if 'relevance' in current_classification and 'confidence' in current_classification:
+                classifications[current_term] = current_classification
+        
+        # Validar y completar clasificaciones faltantes
+        for term in terms:
+            if term not in classifications:
+                # Intentar buscar en la respuesta sin formato estricto
+                term_lower = term.lower()
+                found = False
+                for line in response.split('\n'):
+                    if term_lower in line.lower() and ('relevance' in line.lower() or 'sí' in line.lower() or 'no' in line.lower()):
+                        # Parsear manualmente si es posible
+                        classification = self._parse_domain_classification_response(line)
+                        if classification:
+                            classifications[term] = classification
+                            found = True
+                            break
+                
+                # Si aún no está, crear clasificación por defecto
+                if not found:
+                    classifications[term] = {
+                        'relevance': 'Incierto',
+                        'confidence': 0,
+                        'reason': 'No se pudo clasificar'
+                    }
         
         return classifications
 
@@ -1063,7 +1238,7 @@ Reason: [Brief explanation in {lang_name}]"""
                     if unified_result:
                         # Guardar en caché unificado
                         cache_key = self._get_unified_cache_key(term, source_lang, target_lang, context, domain_description)
-                        self.memory_cache[cache_key] = unified_result
+                        self._add_to_memory_cache(cache_key, unified_result)
                         return term, unified_result
                     return term, None
                     
@@ -1101,6 +1276,7 @@ Reason: [Brief explanation in {lang_name}]"""
         """
         Procesar UN término con traducción + clasificación en una sola llamada
         """
+        last_error = None
         try:
             # Log inicio
             if self.log_callback:
@@ -1113,23 +1289,34 @@ Reason: [Brief explanation in {lang_name}]"""
             if self.log_callback:
                 self.log_callback("UNIFIED_PROMPT_SENT", term, "ENVIANDO", f"Prompt unificado enviado", prompt=prompt)
             
-            # Hacer petición a Ollama
+            # Timeout mayor para flujo unificado (traducción + clasificación)
+            unified_timeout = int(os.getenv('OLLAMA_UNIFIED_TIMEOUT', '90'))
             payload = {
                 "model": self.model,
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "temperature": 0.1,
+                    "temperature": 0.05,
                     "top_p": 0.9,
-                    "max_tokens": 150  # Más tokens para respuesta JSON
+                    "max_tokens": 256
                 }
             }
             
-            response = requests.post(
-                f"{self.base_url}/api/generate",
-                json=payload,
-                timeout=int(os.getenv('OLLAMA_TIMEOUT', '45'))  # Timeout aumentado
-            )
+            last_error = None
+            for attempt in range(max(1, int(os.getenv('OLLAMA_MAX_RETRIES', '2')))):
+                try:
+                    response = requests.post(
+                        f"{self.base_url}/api/generate",
+                        json=payload,
+                        timeout=unified_timeout
+                    )
+                    break
+                except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                    last_error = e
+                    if self.log_callback and attempt < 1:
+                        self.log_callback("UNIFIED_RETRY", term, "REINTENTO", f"Timeout/recurso, reintentando ({attempt + 2})...")
+                    if attempt >= 1:
+                        raise
             
             if response.status_code == 200:
                 result = response.json()
@@ -1168,9 +1355,10 @@ Reason: [Brief explanation in {lang_name}]"""
             return None
             
         except Exception as e:
+            err_msg = str(last_error) if last_error else str(e)
             if self.log_callback:
-                self.log_callback("UNIFIED_ERROR", term, "ERROR", f"Error: {str(e)[:100]}")
-            print(f"Error in unified processing for '{term}': {str(e)}")
+                self.log_callback("UNIFIED_ERROR", term, "ERROR", f"Error: {err_msg[:100]}")
+            print(f"Error in unified processing for '{term}': {err_msg}")
             return None
 
     def _create_unified_prompt(self, term: str, source_lang: str, target_lang: str, context: str, domain_description: str) -> str:
@@ -1187,30 +1375,56 @@ Reason: [Brief explanation in {lang_name}]"""
         source_name = lang_names.get(source_lang, source_lang)
         target_name = lang_names.get(target_lang, target_lang)
         
-        # Prompt unificado optimizado
-        prompt = f"""You are a technical translator and domain classifier. Process the term "{term}" from {source_name} to {target_name}.
+        # Prompt unificado: traducción SOLO desde el contexto dado + clasificación
+        has_context = context and context.strip() and context.lower() not in ('sin contexto', 'sin contexto tmx', '')
+        if has_context:
+            prompt = f"""Two tasks: Translation and Domain Classification.
 
-TASKS:
-1. TRANSLATE: Based on TMX context: "{context}"
-2. CLASSIFY: Relevance to domain: "{domain_description}"
+For translation, use ONLY the context below.
+Output a phrase that actually appears verbatim in the context as the equivalent of the term.
 
-TMX TRANSLATION RULES:
-- Extract ONLY translations that appear in the TMX context
-- If no translation in context, provide best technical translation
-- Clean output, no explanations or symbols
+=== CONTEXT ===
+{context}
+=== END CONTEXT ===
 
-DOMAIN CLASSIFICATION RULES:  
-- "Sí": Term is directly related to the domain
-- "No": Term is generic or unrelated to domain
-- "Incierto": Uncertain relevance
-- Be strict: only "Sí" for clearly domain-specific terms
+Term: "{term}" ({source_name} → {target_name})
+Domain: "{domain_description}"
 
-RESPOND in this EXACT JSON format (no other text):
+TRANSLATION RULES:
+- Output the direct equivalent EXACTLY as it appears in the context.
+- Prefer the simplest form when it appears (e.g. for "jeringa", output "syringe", not "3-piece syringe" unless the term is more specific).
+- The output must be a contiguous phrase from a single sentence.
+- Do NOT combine words from different sentences.
+- If no equivalent appears in the context, set "translation" to "NOT_FOUND".
+
+CLASSIFICATION:
+- Domain relevance: "Sí", "No", or "Incierto".
+- Use "Sí" only if the term is used with the meaning of the provided domain.
+
+Reply ONLY with this JSON:
+
 {{
-    "translation": "clean translation here",
+  "translation": "one phrase from context or NOT_FOUND",
+  "domain_relevance": "Sí | No | Incierto",
+  "confidence": 0-100,
+  "reason": "one short sentence in {source_name}"
+}}
+"""
+        else:
+            prompt = f"""You are a technical translator and domain classifier. No context was provided for the translation.
+
+Term: "{term}" ({source_name} → {target_name})
+Domain: "{domain_description}"
+
+TRANSLATION: Provide the best technical translation (no context was given, so you may use your knowledge).
+CLASSIFICATION: Is the term relevant to the domain? "Sí" / "No" / "Incierto".
+
+Reply with ONLY this JSON:
+{{
+    "translation": "translation",
     "domain_relevance": "Sí",
     "confidence": 85,
-    "reason": "brief explanation in {source_name}"
+    "reason": "one short sentence in {source_name}"
 }}"""
 
         return prompt

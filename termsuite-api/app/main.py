@@ -14,9 +14,11 @@ import pandas as pd
 # Importar routers
 from app.routers import web, ollama, tmx, corpus, status
 from app.dependencies import (
-    jobs, file_handler, ollama_translator, JobStatus
+    jobs, file_handler, ollama_translator
 )
+from app.models import JobStatus
 from app.routers.background_tasks import process_tmx_export
+from app.utils.translation import normalize_translation_options, trim_translation_for_excel
 
 app = FastAPI(
     title="LinguaTerms API",
@@ -261,7 +263,7 @@ async def export_tmx_to_excel(
                         classification = domain_classifications[term]
                         item['Relevancia Ámbito'] = classification['relevance']
                         item['Confianza Ámbito'] = f"{classification['confidence']}%"
-                        item['Razón Ámbito'] = classification.get('reason', '')[:100]
+                        item['Razón Ámbito'] = classification.get('reason', '')[:200]
                     else:
                         item['Relevancia Ámbito'] = 'Error'
                         item['Confianza Ámbito'] = '0%'
@@ -351,7 +353,7 @@ async def export_tmx_to_excel(
                     classification = domain_classifications[term]
                     item['Relevancia Ámbito'] = classification['relevance']
                     item['Confianza Ámbito'] = f"{classification['confidence']}%"
-                    item['Razón Ámbito'] = classification.get('reason', '')[:100]  # Limitar longitud
+                    item['Razón Ámbito'] = classification.get('reason', '')[:200]
                 else:
                     item['Relevancia Ámbito'] = 'Error'
                     item['Confianza Ámbito'] = '0%'
@@ -431,8 +433,12 @@ async def export_tmx_to_excel(
     
     terms_for_excel = filtered_terms
     
-    # Las traducciones ya están incluidas si se usaron datos pre-procesados
-    # No se necesita procesamiento adicional
+    # Normalizar y recortar columna Traducción para Excel
+    for item in terms_for_excel:
+        if 'Traducción' in item and item.get('Traducción'):
+            item['Traducción'] = trim_translation_for_excel(
+                normalize_translation_options(item['Traducción'])
+            )
     
     # Seleccionar columnas si se especifica
     if columns:
@@ -526,7 +532,7 @@ async def export_tmx_to_excel(
             'Contexto Ollama': 60,  # Ancho para contexto TMX
             'Relevancia Ámbito': 18,
             'Confianza Ámbito': 15,
-            'Razón Ámbito': 60
+            'Razón Ámbito': 80
         }
         
         for idx, col in enumerate(df.columns, 1):

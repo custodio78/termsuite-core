@@ -1,5 +1,3 @@
-version: '3.3'
-
 services:
   termsuite-api:
     build: .
@@ -15,9 +13,16 @@ services:
       - TREETAGGER_HOME=/app/treetagger
       - DATA_DIR=/app/data
       - JAVA_OPTS=-Xms1g -Xmx4g
+      # Ollama: IP/hostname del servidor donde corre Ollama
+      # Por defecto: 192.168.0.88. Para otro host, define OLLAMA_HOST en .env
+      - OLLAMA_HOST=${OLLAMA_HOST:-192.168.0.88}
+      - OLLAMA_PORT=${OLLAMA_PORT:-11434}
       # Optimized Ollama Configuration
-      - OLLAMA_BATCH_SIZE=10
-      - OLLAMA_MAX_CONCURRENT=10
-      - OLLAMA_TIMEOUT=45
+      - OLLAMA_BATCH_SIZE=15
+      - OLLAMA_MAX_CONCURRENT=15
+      - OLLAMA_TIMEOUT=90
+      - OLLAMA_UNIFIED_TIMEOUT=120
+      - OLLAMA_MAX_RETRIES=2
       - OLLAMA_UNIFIED_MODE=true
+      - OLLAMA_MEMORY_CACHE_SIZE=2000
     restart: unless-stopped

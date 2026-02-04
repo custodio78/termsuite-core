@@ -11,6 +11,7 @@ from app.dependencies import (
     jobs, file_handler, termsuite_service, 
     tmx_parser, ollama_translator, excel_exporter, add_ollama_log
 )
+from app.utils.translation import normalize_translation_options, trim_translation_for_excel
 
 
 def filter_with_tmx(results: dict, tmx_terms: list) -> dict:
@@ -257,7 +258,7 @@ async def process_auto_translations_unified(job_id: str, tmx_id: str, source_lan
                 # Añadir columnas de dominio desde resultado unificado
                 item['Relevancia Ámbito'] = unified_result['domain_relevance']
                 item['Confianza Ámbito'] = f"{unified_result['confidence']}%"
-                item['Razón Ámbito'] = unified_result['reason'][:100]
+                item['Razón Ámbito'] = unified_result.get('reason', '')[:200]
             elif term in traditional_translations:
                 # MÉTODO TRADICIONAL: Usar solo traducción de Ollama
                 traditional_result = traditional_translations[term]
@@ -287,6 +288,13 @@ async def process_auto_translations_unified(job_id: str, tmx_id: str, source_lan
                     item['Razón Ámbito'] = 'No se especificó ámbito'
             
             excel_data.append(item)
+        
+        # Normalizar y recortar columna Traducción para Excel
+        for item in excel_data:
+            if 'Traducción' in item and item.get('Traducción'):
+                item['Traducción'] = trim_translation_for_excel(
+                    normalize_translation_options(item['Traducción'])
+                )
         
         # Guardar datos pre-procesados COMPLETOS
         processed_data_path = file_handler.get_path("tmx", f"{tmx_id}_processed.json")
@@ -322,7 +330,7 @@ async def process_auto_translations_unified(job_id: str, tmx_id: str, source_lan
         jobs[job_id]["message"] = f"Error en procesamiento unificado: {str(e)}"
 
 
-def process_tmx_export(export_job_id: str, tmx_id: str, params: dict):
+async def process_tmx_export(export_job_id: str, tmx_id: str, params: dict):
     """Procesar exportación TMX en background con traducción Ollama"""
     try:
         jobs[export_job_id]["status"] = JobStatus.PROCESSING
@@ -527,13 +535,13 @@ def process_tmx_export(export_job_id: str, tmx_id: str, params: dict):
                         terms_with_context.append(term_data)
                     
                     # Traducir en lotes usando el método asíncrono
-                    import asyncio
-                    ollama_translations = asyncio.run(ollama_translator.translate_terms_batch(
+                    max_concurrent = int(os.getenv('OLLAMA_MAX_CONCURRENT', '10'))
+                    ollama_translations = await ollama_translator.translate_terms_batch(
                         terms_with_context, 
                         language, 
                         target_language,
-                        max_concurrent=2  # Limitar concurrencia para no sobrecargar Ollama
-                    ))
+                        max_concurrent=max_concurrent
+                    )
                     
                     add_ollama_log("BATCH_COMPLETE", None, "COMPLETADO", f"Traducidos {len(ollama_translations)}/{len(terms_to_translate)} términos")
                     
@@ -597,13 +605,13 @@ def process_tmx_export(export_job_id: str, tmx_id: str, params: dict):
                 add_ollama_log("DOMAIN_BATCH_START", None, "INICIANDO", f"Iniciando clasificación de {len(terms_to_classify)} términos para ámbito: {domain_description[:50]}...")
                 
                 # Clasificar términos usando el método asíncrono
-                import asyncio
-                domain_classifications = asyncio.run(ollama_translator.classify_terms_domain_batch(
+                max_concurrent = int(os.getenv('OLLAMA_MAX_CONCURRENT', '10'))
+                domain_classifications = await ollama_translator.classify_terms_domain_batch(
                     terms_to_classify, 
                     domain_description, 
                     language,
-                    max_concurrent=3  # Limitar concurrencia
-                ))
+                    max_concurrent=max_concurrent
+                )
                 
                 add_ollama_log("DOMAIN_BATCH_COMPLETE", None, "COMPLETADO", f"Clasificados {len(domain_classifications)}/{len(terms_to_classify)} términos")
                 
@@ -614,7 +622,7 @@ def process_tmx_export(export_job_id: str, tmx_id: str, params: dict):
                         classification = domain_classifications[term]
                         item['Relevancia Ámbito'] = classification['relevance']
                         item['Confianza Ámbito'] = f"{classification['confidence']}%"
-                        item['Razón Ámbito'] = classification.get('reason', '')[:100]  # Limitar longitud
+                        item['Razón Ámbito'] = classification.get('reason', '')[:200]
                     else:
                         item['Relevancia Ámbito'] = 'Error'
                         item['Confianza Ámbito'] = '0%'
@@ -637,6 +645,13 @@ def process_tmx_export(export_job_id: str, tmx_id: str, params: dict):
         
         jobs[export_job_id]["progress"] = 85
         jobs[export_job_id]["message"] = "Generando Excel..."
+        
+        # Normalizar y recortar columna Traducción para Excel
+        for item in terms_for_excel:
+            if 'Traducción' in item and item.get('Traducción'):
+                item['Traducción'] = trim_translation_for_excel(
+                    normalize_translation_options(item['Traducción'])
+                )
         
         # Generar archivo Excel
         import pandas as pd
@@ -700,7 +715,7 @@ def process_tmx_export(export_job_id: str, tmx_id: str, params: dict):
                     'Contexto Ollama': 40,
                     'Relevancia Ámbito': 18,
                     'Confianza Ámbito': 15,
-                    'Razón Ámbito': 60
+                    'Razón Ámbito': 80
                 }
                 
                 for idx, col in enumerate(df.columns, 1):

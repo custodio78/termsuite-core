@@ -21,12 +21,36 @@ let state = {
 
 const API_BASE = '';
 
-// Inicialización
-document.addEventListener('DOMContentLoaded', function() {
+// Clave para último análisis en localStorage
+const LAST_ANALYSIS_KEY = 'linguaterms_last_analysis';
+
+// Inicialización segura (funciona aunque DOMContentLoaded ya se haya disparado)
+function initApp() {
     setupFileUpload();
     setupDragAndDrop();
     checkOllamaStatus();
-});
+    loadHistory();
+    updateRecoveryVisibility();
+
+    // Configurar event listener para botón de descarga
+    const downloadBtn = document.getElementById('download-btn');
+    if (downloadBtn) {
+        downloadBtn.addEventListener('click', downloadResultsOptimized);
+    }
+
+    // También buscar por clase como fallback
+    const downloadBtnByClass = document.querySelector('.btn-download');
+    if (downloadBtnByClass && !downloadBtn) {
+        downloadBtnByClass.addEventListener('click', downloadResultsOptimized);
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    // DOM ya está listo cuando se carga el script al final del body
+    initApp();
+}
 
 // Setup File Upload
 function setupFileUpload() {
@@ -267,8 +291,9 @@ function removeFile() {
     document.getElementById('file-preview').style.display = 'none';
     document.getElementById('upload-zone').style.display = 'block';
     document.getElementById('tmx-file-input').value = '';
-    state.tmxId = null;
+    state.fileId = null;
     state.fileName = null;
+    updateRecoveryVisibility();
 }
 
 // Go to Step
@@ -291,6 +316,9 @@ function goToStep(step) {
     
     state.currentStep = step;
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (step === 1) {
+        updateRecoveryVisibility();
+    }
 }
 
 // Select Preset
@@ -366,13 +394,17 @@ async function extractTerms() {
                 use_termsuite: true
             };
             
-            // Incluir idioma destino si está disponible
-            if (state.targetLanguage && state.availableLanguages.length > 1) {
+            // Incluir idioma destino siempre que esté seleccionado (necesario para que se ejecuten las traducciones)
+            if (state.targetLanguage && state.targetLanguage !== state.sourceLanguage) {
                 payload.target_language = state.targetLanguage;
             }
             
-            // NUEVO: Incluir descripción del dominio si está disponible
-            if (state.config.domainDescription && state.config.useDomainClassification) {
+            // NUEVO: aplicar filtro de nº de palabras desde la extracción (para acelerar Ollama)
+            if (typeof state.config.minWords === 'number') payload.min_words = state.config.minWords;
+            if (typeof state.config.maxWords === 'number') payload.max_words = state.config.maxWords;
+
+            // Incluir descripción del ámbito cuando el usuario la ha rellenado y tiene la clasificación activada
+            if (state.config.useDomainClassification && state.config.domainDescription) {
                 payload.domain_description = state.config.domainDescription;
             }
             
@@ -388,10 +420,13 @@ async function extractTerms() {
                 throw new Error(extractData.detail || 'Error en la extracción');
             }
             
-            // NUEVO: Si hay translation_job_id, monitorear progreso
+            // Si hay translation_job_id, monitorear progreso de traducciones y clasificación
             if (extractData.translation_job_id) {
                 updateProgress(40, 'Iniciando traducciones automáticas...');
                 await monitorTranslationJob(extractData.translation_job_id);
+            } else if (payload.target_language) {
+                // Se pidió idioma destino pero no se inició el job (p. ej. Ollama no disponible)
+                showToast('Traducciones no realizadas: comprueba que Ollama esté disponible en /api/ollama/status', 'warning');
             }
         } else {
             // Corpus extraction (use min frequency 1 for corpus to get more results)
@@ -564,7 +599,8 @@ async function showResults(data) {
 
 // Download Results Optimized
 async function downloadResultsOptimized() {
-    const downloadBtn = document.querySelector('.btn-download');
+    console.log('downloadResultsOptimized clicado, state.fileId =', state.fileId);
+    const downloadBtn = document.getElementById('download-btn') || document.querySelector('.btn-download');
     if (!downloadBtn || !state.fileId) {
         showToast('Error: No hay archivo cargado', 'error');
         return;
@@ -616,7 +652,10 @@ async function downloadResultsOptimized() {
         downloadBtn.innerHTML = originalText;
         downloadBtn.disabled = false;
     }
-}
+};
+
+// Asegurar que esté disponible globalmente
+window.downloadResultsOptimized = downloadResultsOptimized;
 
 async function checkUnifiedStatus(tmxId) {
     try {
@@ -770,6 +809,21 @@ async function pollExportJob(exportJobId) {
 
 // Reset Wizard
 function resetWizard() {
+    // Guardar último análisis antes de resetear (para poder recuperarlo)
+    if (state.fileId && state.fileType === 'tmx') {
+        try {
+            localStorage.setItem(LAST_ANALYSIS_KEY, JSON.stringify({
+                fileId: state.fileId,
+                fileName: state.fileName || ('tmx_' + state.fileId.slice(0, 8) + '.tmx'),
+                fileType: state.fileType,
+                sourceLanguage: state.sourceLanguage,
+                targetLanguage: state.targetLanguage
+            }));
+        } catch (e) {
+            console.warn('No se pudo guardar último análisis', e);
+        }
+    }
+
     state = {
         currentStep: 1,
         fileType: null,
@@ -788,7 +842,7 @@ function resetWizard() {
             includeTranslations: true
         }
     };
-    
+
     removeFile();
     goToStep(1);
     
@@ -807,6 +861,152 @@ function resetWizard() {
     // Show target language and translations options again
     document.getElementById('target-language-container').style.display = 'block';
     document.getElementById('include-translations').closest('.form-check').style.display = 'block';
+}
+
+// Mostrar/ocultar sección Recuperar último e Historial (solo en paso 1 sin archivo)
+function updateRecoveryVisibility() {
+    const step1 = document.getElementById('step-1');
+    const filePreview = document.getElementById('file-preview');
+    const recovery = document.getElementById('recovery-and-history');
+    const recoverCard = document.getElementById('recover-last-card');
+    if (!step1 || !recovery) return;
+    const step1Active = step1.classList.contains('active');
+    const noFile = !filePreview || filePreview.style.display === 'none';
+    if (step1Active && noFile) {
+        recovery.style.display = 'block';
+        try {
+            const last = localStorage.getItem(LAST_ANALYSIS_KEY);
+            if (last) {
+                const data = JSON.parse(last);
+                recoverCard.style.display = 'block';
+                document.getElementById('recover-last-info').textContent = data.fileName || ('Análisis ' + (data.fileId || '').slice(0, 8));
+            } else {
+                recoverCard.style.display = 'none';
+            }
+        } catch (e) {
+            recoverCard.style.display = 'none';
+        }
+    } else {
+        recovery.style.display = 'none';
+    }
+}
+
+// Cargar historial de análisis desde la API
+async function loadHistory() {
+    const listEl = document.getElementById('history-list');
+    const placeholder = document.getElementById('history-placeholder');
+    if (!listEl || !placeholder) return;
+    try {
+        const response = await fetch(`${API_BASE}/api/analyses?limit=20`);
+        const data = await response.json();
+        placeholder.style.display = 'none';
+        if (!data.analyses || data.analyses.length === 0) {
+            listEl.innerHTML = '<div class="list-group-item text-muted small">No hay análisis anteriores</div>';
+            return;
+        }
+        listEl.innerHTML = data.analyses.map(function (a) {
+            const date = a.uploaded_at ? new Date(a.uploaded_at).toLocaleString('es') : '';
+            const lang = a.source_language && a.target_language ? a.source_language + ' → ' + a.target_language : (a.source_language || '');
+            const name = (a.original_filename || a.tmx_id || '').replace(/"/g, '&quot;');
+            const tmxIdEsc = JSON.stringify(a.tmx_id);
+            return '<div class="list-group-item d-flex justify-content-between align-items-start flex-wrap gap-2">' +
+                '<div class="flex-grow-1 min-w-0">' +
+                '<button type="button" class="btn btn-link btn-sm p-0 text-start text-decoration-none text-dark w-100" onclick="restoreFromHistory(' + tmxIdEsc + ')">' +
+                '<div class="d-flex justify-content-between align-items-center"><span class="text-truncate me-2" title="' + name + '">' + name + '</span><span class="badge bg-secondary">' + (a.total_terms || 0) + ' términos</span></div>' +
+                '<div class="small text-muted mt-1">' + date + (lang ? ' · ' + lang : '') + '</div>' +
+                '</button>' +
+                '</div>' +
+                '<a href="#" class="btn btn-success btn-sm flex-shrink-0" onclick="event.preventDefault(); downloadAnalysisExcel(' + tmxIdEsc + ');" title="Descargar Excel">' +
+                '<i class="fas fa-file-excel me-1"></i>Descargar Excel</a>' +
+                '</div>';
+        }).join('');
+    } catch (e) {
+        placeholder.textContent = 'No se pudo cargar el historial';
+    }
+}
+
+// Recuperar último análisis (ir a paso 3 con el mismo fileId)
+async function restoreLastAnalysis() {
+    try {
+        const last = localStorage.getItem(LAST_ANALYSIS_KEY);
+        if (!last) return;
+        const data = JSON.parse(last);
+        if (!data.fileId) return;
+        await restoreAnalysisState(data.fileId, data.fileName, data.sourceLanguage, data.targetLanguage);
+    } catch (e) {
+        showToast('Error al recuperar el análisis', 'error');
+    }
+}
+
+// Restaurar un análisis del historial
+async function restoreFromHistory(tmxId) {
+    if (!tmxId) return;
+    try {
+        const response = await fetch(`${API_BASE}/api/analyses/${tmxId}/summary`);
+        if (!response.ok) throw new Error('Análisis no encontrado');
+        const summary = await response.json();
+        await restoreAnalysisState(
+            summary.tmx_id,
+            summary.original_filename,
+            summary.source_language,
+            summary.target_language,
+            { total_terms: summary.total_terms, total_occurrences: summary.total_occurrences }
+        );
+    } catch (e) {
+        showToast('Error al abrir el análisis: ' + (e.message || ''), 'error');
+    }
+}
+
+// Descargar Excel de un análisis del historial (sin abrir la vista de resultados)
+async function downloadAnalysisExcel(tmxId) {
+    if (!tmxId) return;
+    try {
+        const response = await fetch(`${API_BASE}/api/analyses/${tmxId}/summary`);
+        if (!response.ok) throw new Error('Análisis no encontrado');
+        const summary = await response.json();
+        state.fileId = summary.tmx_id;
+        state.fileName = summary.original_filename || ('tmx_' + summary.tmx_id.slice(0, 8) + '.tmx');
+        state.fileType = 'tmx';
+        state.sourceLanguage = summary.source_language || '';
+        state.targetLanguage = summary.target_language || '';
+        if (typeof state.config === 'undefined') state.config = {};
+        state.config.includeTranslations = state.config.includeTranslations !== false;
+        await downloadResultsOptimized();
+    } catch (e) {
+        showToast('Error al descargar: ' + (e.message || ''), 'error');
+    }
+}
+
+// Restaurar estado y mostrar vista de resultados (paso 3)
+async function restoreAnalysisState(fileId, fileName, sourceLanguage, targetLanguage, stats) {
+    state.fileId = fileId;
+    state.fileName = fileName || ('tmx_' + fileId.slice(0, 8) + '.tmx');
+    state.fileType = 'tmx';
+    state.sourceLanguage = sourceLanguage || '';
+    state.targetLanguage = targetLanguage || '';
+    state.currentStep = 3;
+    goToStep(3);
+    document.getElementById('processing-view').style.display = 'none';
+    document.getElementById('results-view').style.display = 'block';
+    if (stats) {
+        document.getElementById('stat-unique-terms').textContent = (stats.total_terms || 0).toLocaleString();
+        document.getElementById('stat-total-occurrences').textContent = (stats.total_occurrences != null ? stats.total_occurrences : '-').toLocaleString();
+    } else {
+        try {
+            const res = await fetch(`${API_BASE}/api/analyses/${fileId}/summary`);
+            if (res.ok) {
+                const s = await res.json();
+                document.getElementById('stat-unique-terms').textContent = (s.total_terms || 0).toLocaleString();
+                document.getElementById('stat-total-occurrences').textContent = (s.total_occurrences != null ? s.total_occurrences : '-').toLocaleString();
+            }
+        } catch (e) {
+            document.getElementById('stat-unique-terms').textContent = '0';
+            document.getElementById('stat-total-occurrences').textContent = '-';
+        }
+    }
+    const langText = (state.targetLanguage ? state.sourceLanguage + ' → ' + state.targetLanguage : state.sourceLanguage || '-').toUpperCase();
+    document.getElementById('stat-languages').textContent = langText;
+    updateRecoveryVisibility();
 }
 
 // Show Toast

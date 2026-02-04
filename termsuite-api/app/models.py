@@ -62,6 +62,8 @@ class ExtractTMXLanguageRequest(BaseModel):
     target_language: Optional[str] = Field(default=None, description="Idioma destino (opcional)")
     use_termsuite: bool = Field(default=False, description="Usar TermSuite para extraer términos individuales")
     domain_description: Optional[str] = Field(default=None, description="Descripción del ámbito/dominio para clasificar términos")
+    min_words: Optional[int] = Field(default=None, description="Mínimo número de palabras por término (opcional)")
+    max_words: Optional[int] = Field(default=None, description="Máximo número de palabras por término (opcional)")
 
 
 class DomainClassificationRequest(BaseModel):
